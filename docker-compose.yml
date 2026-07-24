@@ -43,6 +43,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       FRONTEND_ORIGIN: http://localhost:3000
       COOKIE_DOMAIN: localhost
+      COOKIE_SECURE: "false"
     ports:
       - "8001:8000"
 
@@ -62,6 +63,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       FRONTEND_ORIGIN: http://localhost:3001
       COOKIE_DOMAIN: localhost
+      COOKIE_SECURE: "false"
     ports:
       - "8002:8000"
 
@@ -82,7 +84,10 @@ services:
 
   # ---- Frontends: separate Next.js apps, each pointed at its own instance ----
   customer-web:
-    build: ./apps/customer
+    build:
+      context: ./apps/customer
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8001/api/v1
     restart: unless-stopped
     depends_on:
       - api-public
@@ -92,7 +97,10 @@ services:
       - "3000:3000"
 
   admin-web:
-    build: ./apps/admin
+    build:
+      context: ./apps/admin
+      args:
+        NEXT_PUBLIC_ADMIN_API_URL: http://localhost:8002/api/v1
     restart: unless-stopped
     depends_on:
       - api-admin
