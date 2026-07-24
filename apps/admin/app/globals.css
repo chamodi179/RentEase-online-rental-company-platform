@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #F4F6F8;
+  color: #1C2733;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center rounded-card bg-action px-4 py-2 text-sm font-medium text-white
+         transition-colors hover:bg-action-dark focus-visible:outline focus-visible:outline-2
+         focus-visible:outline-offset-2 focus-visible:outline-action disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center rounded-card border border-line bg-surface px-4 py-2 text-sm
+         font-medium text-graphite transition-colors hover:border-graphite-soft focus-visible:outline
+         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action;
+}
+
+.input {
+  @apply w-full rounded-card border border-line bg-surface px-3 py-2 text-sm text-graphite
+         placeholder:text-graphite-soft/60 focus:border-action focus:outline-none;
+}
+
+.card {
+  @apply rounded-card border border-line bg-surface p-5;
+}
+
+.table-shell {
+  @apply overflow-hidden rounded-card border border-line bg-surface;
+}
+
+.th {
+  @apply border-b border-line px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-graphite-soft;
+}
+
+.td {
+  @apply border-b border-line px-4 py-3 text-sm text-graphite last:border-0;
+}
+
+.badge {
+  @apply rounded-full px-2.5 py-0.5 text-xs font-medium;
+}
