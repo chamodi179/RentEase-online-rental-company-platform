@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_db
-from app.models.models import Item
+from app.models.models import Item, ItemCatalog
 from app.schemas.common import ItemDetailOut, ItemListOut, PriceQuoteOut
 from app.services.availability import available_item_ids
 from app.services.pricing import quote_price
@@ -20,8 +20,10 @@ def browse_items(
     end: datetime | None = None,
     db: Session = Depends(get_db),
 ):
+    # photos live on ItemCatalog (shared across units of the same model), so
+    # they're eager-loaded via catalog -> photos, not directly off Item.
     query = db.query(Item).options(
-        joinedload(Item.branch), joinedload(Item.photos)
+        joinedload(Item.branch), joinedload(Item.catalog).joinedload(ItemCatalog.photos)
     ).filter(Item.status == "available")
 
     if category_id:
@@ -42,7 +44,11 @@ def browse_items(
 def get_item(item_id: int, db: Session = Depends(get_db)):
     item = (
         db.query(Item)
-        .options(joinedload(Item.branch), joinedload(Item.photos), joinedload(Item.catalog))
+        .options(
+            joinedload(Item.branch),
+            joinedload(Item.catalog).joinedload(ItemCatalog.photos),
+            joinedload(Item.catalog),
+        )
         .filter(Item.id == item_id)
         .first()
     )
