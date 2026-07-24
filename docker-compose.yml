@@ -92,7 +92,12 @@ services:
     depends_on:
       - api-public
     environment:
+      # Used by the browser (runs on your host machine, so it needs the published port)
       NEXT_PUBLIC_API_URL: http://localhost:8001/api/v1
+      # Used by Next.js server components / SSR fetches, which run *inside* this
+      # container. "localhost" in here would mean the customer-web container
+      # itself, not api-public, so this must use the Docker Compose service name.
+      API_URL_INTERNAL: http://api-public:8000/api/v1
     ports:
       - "3000:3000"
 
@@ -106,6 +111,7 @@ services:
       - api-admin
     environment:
       NEXT_PUBLIC_ADMIN_API_URL: http://localhost:8002/api/v1
+      ADMIN_API_URL_INTERNAL: http://api-admin:8000/api/v1
     ports:
       - "3001:3001"
 
