@@ -9,6 +9,7 @@ pydantic-settings==2.5.2
 python-jose==3.3.0
 pyjwt==2.9.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 python-multipart==0.0.9
 stripe==10.12.0
 boto3==1.35.36
