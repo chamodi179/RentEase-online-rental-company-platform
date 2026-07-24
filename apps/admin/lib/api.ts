@@ -1,6 +1,13 @@
 // Points at api-admin — a separate running instance from api-public, with
 // its own connection pool and its own session cookie scope (architecture doc §5, §8).
-const API_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:8002/api/v1";
+//
+// Same server/browser split as the customer app's lib/api.ts: Server
+// Components run inside the admin-web container, where "localhost" doesn't
+// reach api-admin (a separate container) — that needs the Compose service name.
+const API_URL =
+  typeof window === "undefined"
+    ? process.env.ADMIN_API_URL_INTERNAL || "http://api-admin:8000/api/v1"
+    : process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:8002/api/v1";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
