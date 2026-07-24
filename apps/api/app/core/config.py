@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # shortened to 1 for APP_MODE=admin, see security.py
 
     COOKIE_DOMAIN: str = "localhost"
+    # False for local http:// dev (this stack has no HTTPS anywhere yet) —
+    # a Secure cookie is silently dropped by many browsers over plain HTTP,
+    # which is what causes "login succeeds but immediately bounces back".
+    # Set to True once this runs behind real HTTPS in production.
+    COOKIE_SECURE: bool = False
     FRONTEND_ORIGIN: str = "http://localhost:3000"
 
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
