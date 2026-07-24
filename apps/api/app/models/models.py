@@ -85,6 +85,12 @@ class Item(Base):
     catalog = relationship("ItemCatalog", back_populates="units")
     branch = relationship("Branch")
 
+    @property
+    def photos(self):
+        """Photos live on the catalog entry (shared by all units of the same
+        model), not per physical unit. Proxy so ItemListOut.photos works."""
+        return self.catalog.photos if self.catalog else []
+
     __table_args__ = (
         CheckConstraint("base_price_daily >= 0", name="chk_items_base_price"),
         CheckConstraint("deposit_amount >= 0", name="chk_items_deposit"),
