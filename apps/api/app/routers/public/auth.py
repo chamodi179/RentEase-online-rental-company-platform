@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.deps import get_current_user, get_db
 from app.core.security import create_access_token, create_refresh_token, hash_password, verify_password
 from app.models.models import User
@@ -8,7 +9,7 @@ from app.schemas.common import LoginIn, RegisterIn, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-COOKIE_KWARGS = dict(httponly=True, secure=True, samesite="lax")
+COOKIE_KWARGS = dict(httponly=True, secure=settings.COOKIE_SECURE, samesite="lax")
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
