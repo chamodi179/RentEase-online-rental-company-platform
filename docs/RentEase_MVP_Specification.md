@@ -6,7 +6,7 @@
 
 ## 1. Business Background
 
-We run a rental company that rents out physical items to customers — vehicles, equipment, or property (this scenario is generic; naming can be adapted for the specific rental domain). Bookings currently happen over phone/WhatsApp, causing double-bookings and no central record. The MVP replaces that with a single source of truth for availability and bookings.
+We run a rental company that rents out physical items to customers — vehicles, equipment, or property (this scenario is generic; naming can be adapted for the specific rental domain). Bookings currently happen over phone/WhatsApp, causing double-bookings and no central record. The MVP replaces that with a single source of truth for availability and bookings. The customer physically visits the branch to collect and return the item.
 
 ---
 
@@ -69,7 +69,7 @@ One goal, above all others, defines the MVP: stop double-bookings by giving cust
 
 - My Bookings: upcoming, active, past, cancelled — with status.
 - Booking detail: view dates, amount, status.
-- Cancel request, subject to one simple fixed policy (e.g., free before 48h).
+- Cancel request, subject to one simple fixed policy: cancellation is always available for `pending`/`confirmed` bookings; whether it's a *full refund* depends on timing (≥48h before pickup → full refund; <48h → cancellation still goes through, but no refund is issued). Cancellation and refund eligibility are deliberately separate: the booking can always be cancelled, only the refund outcome is time-gated. The `payments` table's existing `type: payment | refund` already covers this — no new table needed.
 
 **Customer account and cancellation**
 ![alt text](image-2.png)
