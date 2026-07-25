@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { Booking, ItemDetail, PriceQuote, User } from "@/lib/types";
+import type { Booking, CheckoutSession, ItemDetail, PriceQuote, User } from "@/lib/types";
 
 type Step = "review" | "document" | "payment" | "done";
 
@@ -65,11 +65,11 @@ function CheckoutContent() {
         end_datetime: `${end}T10:00:00`,
       });
       setBooking(created);
-      const session = await api.post<{ checkout_url: string }>(`/payments/checkout/${created.id}`);
-      // Production: window.location.href = session.checkout_url (redirect to Stripe).
-      // MVP demo: mark done directly since Stripe webhook confirms server-side.
-      void session;
-      setStep("done");
+      const session = await api.post<CheckoutSession>(`/payments/checkout/${created.id}`);
+      // Real Stripe or the in-app mock checkout page — either way the
+      // booking is only confirmed once the webhook (or the mock
+      // "Simulate successful payment" button) fires server-side.
+      window.location.href = session.checkout_url;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not complete booking");
     }
