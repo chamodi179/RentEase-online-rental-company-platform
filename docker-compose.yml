@@ -18,11 +18,26 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      # Lets the browser (localhost:3000) PUT directly to MinIO's presigned
+      # URLs — without this, the upload XHR fails as a CORS error.
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio_data:/data
+
+  # One-shot init: creates the "rentease" bucket if it doesn't exist yet,
+  # then exits. Presigned PUTs 403 until this bucket exists.
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done;
+      mc mb --ignore-existing local/rentease;
+      "
 
   # ---- Backend: same image, two isolated running instances ----
   # (architecture doc: one codebase, two processes, two failure domains —
@@ -44,6 +59,13 @@ services:
       FRONTEND_ORIGIN: http://localhost:3000
       COOKIE_DOMAIN: localhost
       COOKIE_SECURE: "false"
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_BUCKET: rentease
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+    depends_on:
+      - minio-init
     ports:
       - "8001:8000"
 

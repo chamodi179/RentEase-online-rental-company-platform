@@ -31,11 +31,15 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
     STRIPE_WEBHOOK_SECRET: str = "whsec_placeholder"
 
-    # Cancelling a pending/confirmed booking is always allowed; this only
-    # gates whether the cancellation also produces a full refund (spec §4.3).
-    CANCELLATION_FREE_HOURS: int = 48
-
+    # Used server-side (container-to-container) for anything the API itself
+    # needs to reach MinIO over, e.g. bucket setup.
     S3_ENDPOINT: str = "http://minio:9000"
+    # Used only to SIGN presigned URLs. Must be the host the *browser* will
+    # actually call, since the Host header is part of the SigV4 signature —
+    # signing against "minio:9000" (container-only DNS) produces a URL the
+    # browser can never resolve. No network call happens at signing time, so
+    # this doesn't need to be reachable from inside the API container itself.
+    S3_PUBLIC_ENDPOINT: str = "http://localhost:9000"
     S3_BUCKET: str = "rentease"
     S3_ACCESS_KEY: str = "minioadmin"
     S3_SECRET_KEY: str = "minioadmin"

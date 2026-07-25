@@ -113,15 +113,22 @@ class DocumentOut(OrmBase):
     created_at: datetime
 
 
-class CancelBookingOut(BookingOut):
-    # None when there was nothing to refund (e.g. booking never paid);
-    # otherwise "success" (refunded), "pending" (manual reconciliation),
-    # or "failed" (gateway declined the refund).
-    refund_status: str | None = None
+class DocumentRegisterIn(BaseModel):
+    document_type: str
+    file_url: str
+
+
+class PresignRequest(BaseModel):
+    filename: str
+    content_type: str = "application/octet-stream"
+
+
+class PresignOut(BaseModel):
+    upload_url: str
+    file_url: str
 
 
 # ---- payments ----
 class CheckoutSessionOut(BaseModel):
     checkout_url: str
     session_id: str
-    is_mock: bool = False
