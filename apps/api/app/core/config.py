@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
     STRIPE_WEBHOOK_SECRET: str = "whsec_placeholder"
 
+    # Cancelling a pending/confirmed booking is always allowed; this only
+    # gates whether the cancellation also produces a full refund (spec §4.3).
+    CANCELLATION_FREE_HOURS: int = 48
+
     S3_ENDPOINT: str = "http://minio:9000"
     S3_BUCKET: str = "rentease"
     S3_ACCESS_KEY: str = "minioadmin"
