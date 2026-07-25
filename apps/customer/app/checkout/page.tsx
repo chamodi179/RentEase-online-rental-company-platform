@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Booking, ItemDetail, PriceQuote, User } from "@/lib/types";
@@ -18,7 +18,6 @@ export default function CheckoutPage() {
 }
 
 function CheckoutContent() {
-  const router = useRouter();
   const params = useSearchParams();
   const itemId = params.get("item_id");
   const start = params.get("start");
@@ -28,12 +27,14 @@ function CheckoutContent() {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [booking, setBooking] = useState<Booking | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [docUploaded, setDocUploaded] = useState(false);
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
+  // Booking is created once and reused on retry — see createBookingAndPay().
+  const [bookingId, setBookingId] = useState<number | null>(null);
+  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     if (!itemId || !start || !end) return;
@@ -89,22 +90,34 @@ function CheckoutContent() {
 
   async function createBookingAndPay() {
     setError(null);
+    setPaying(true);
     try {
-      const created = await api.post<Booking>("/bookings", {
-        item_id: Number(itemId),
-        branch_pickup_id: item?.branch.id,
-        branch_dropoff_id: item?.branch.id,
-        start_datetime: `${start}T10:00:00`,
-        end_datetime: `${end}T10:00:00`,
-      });
-      setBooking(created);
-      const session = await api.post<{ checkout_url: string }>(`/payments/checkout/${created.id}`);
-      // Production: window.location.href = session.checkout_url (redirect to Stripe).
-      // MVP demo: mark done directly since Stripe webhook confirms server-side.
-      void session;
-      setStep("done");
+      // Only create the booking on the *first* attempt. A pending booking
+      // legitimately blocks its own window (see availability.py), so if a
+      // previous click got this far and then failed later (e.g. reaching
+      // Stripe), retrying must reuse that same booking instead of creating
+      // a second one — otherwise the retry collides with itself and comes
+      // back as "Item is already booked for this window".
+      let id = bookingId;
+      if (id === null) {
+        const created = await api.post<Booking>("/bookings", {
+          item_id: Number(itemId),
+          branch_pickup_id: item?.branch.id,
+          branch_dropoff_id: item?.branch.id,
+          start_datetime: `${start}T10:00:00`,
+          end_datetime: `${end}T10:00:00`,
+        });
+        id = created.id;
+        setBookingId(id);
+      }
+      const session = await api.post<{ checkout_url: string }>(`/payments/checkout/${id}`);
+      // Real Stripe-hosted checkout. Stripe redirects back to /checkout/success
+      // (or straight back here on cancel) — the "done" step below is never
+      // reached from this page; it's rendered on the success page instead.
+      window.location.href = session.checkout_url;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not complete booking");
+      setPaying(false);
     }
   }
 
@@ -172,17 +185,14 @@ function CheckoutContent() {
       {step === "payment" && (
         <div className="card">
           <p className="mb-4 text-ink-soft">Pay securely via Stripe to confirm your booking.</p>
-          {error && <p className="mb-3 text-sm text-danger">{error}</p>}
-          <button className="btn-primary w-full" onClick={createBookingAndPay}>Pay &amp; confirm booking</button>
-        </div>
-      )}
-
-      {step === "done" && booking && (
-        <div className="card text-center">
-          <p className="font-display text-lg font-semibold text-ink">Booking confirmed 🎉</p>
-          <p className="mt-1 text-ink-soft">Reference: <span className="font-medium text-ink">{booking.booking_reference}</span></p>
-          <button className="btn-primary mt-5" onClick={() => router.push(`/account/bookings/${booking.id}`)}>
-            View booking
+          {error && (
+            <p className="mb-3 text-sm text-danger">
+              {error}
+              {bookingId && " — your reservation is still held, just try paying again."}
+            </p>
+          )}
+          <button className="btn-primary w-full" onClick={createBookingAndPay} disabled={paying}>
+            {paying ? "Redirecting to Stripe…" : "Pay & confirm booking"}
           </button>
         </div>
       )}
