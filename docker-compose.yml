@@ -59,6 +59,8 @@ services:
       FRONTEND_ORIGIN: http://localhost:3000
       COOKIE_DOMAIN: localhost
       COOKIE_SECURE: "false"
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
       S3_ENDPOINT: http://minio:9000
       S3_PUBLIC_ENDPOINT: http://localhost:9000
       S3_BUCKET: rentease
