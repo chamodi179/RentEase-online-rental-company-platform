@@ -61,16 +61,6 @@ export interface BookingDetail extends Booking {
   branch_dropoff: Branch;
 }
 
-export interface CancelBookingResult extends Booking {
-  refund_status: "success" | "pending" | "failed" | null;
-}
-
-export interface CheckoutSession {
-  checkout_url: string;
-  session_id: string;
-  is_mock: boolean;
-}
-
 export interface User {
   id: number;
   full_name: string;
