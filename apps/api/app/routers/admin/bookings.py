@@ -5,8 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_db, require_role
 from app.models.models import Booking, User
-from app.schemas.admin import AdminBookingOut, BookingStatusUpdateIn, ManualBookingCreateIn
-from app.schemas.common import BookingDetailOut
+from app.schemas.admin import AdminBookingDetailOut, AdminBookingOut, BookingStatusUpdateIn, ManualBookingCreateIn
 from app.services.booking_service import change_status, create_booking
 
 router = APIRouter(prefix="/bookings", tags=["admin-bookings"])
@@ -45,7 +44,7 @@ def create_manual_booking(payload: ManualBookingCreateIn, db: Session = Depends(
     )
 
 
-@router.get("/{booking_id}", response_model=BookingDetailOut)
+@router.get("/{booking_id}", response_model=AdminBookingDetailOut)
 def booking_detail(booking_id: int, db: Session = Depends(get_db), _=Depends(staff_only)):
     booking = (
         db.query(Booking)

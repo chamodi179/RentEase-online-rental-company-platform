@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr
 
-from app.schemas.common import OrmBase, UserOut
+from app.schemas.common import BookingDetailOut, OrmBase, UserOut
 
 
 class DashboardSummaryOut(BaseModel):
@@ -56,6 +56,10 @@ class AdminBookingOut(OrmBase):
     end_datetime: datetime
     total_amount: Decimal
     created_at: datetime
+
+
+class AdminBookingDetailOut(BookingDetailOut):
+    customer_id: int
 
 
 class BookingStatusUpdateIn(BaseModel):
