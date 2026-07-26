@@ -169,11 +169,4 @@ With the default placeholder `STRIPE_SECRET_KEY`:
 
 Set a real `STRIPE_SECRET_KEY` (and `STRIPE_WEBHOOK_SECRET` for the
 `/payments/webhook` endpoint) to switch both flows over to live Stripe
-
 without touching the frontend.
-
-Card number: 4242 4242 4242 4242
-Expiry: any future date (e.g. 12/34)
-CVC: any 3 digits (e.g. 123)
-Cardholder name: anything (e.g. Chamodi Kawshani)
-ZIP/postal: any valid-looking value if asked
