@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -29,6 +29,16 @@ def presign_upload(payload: PresignRequest, user: User = Depends(customer_only))
 def register_document(
     payload: DocumentRegisterIn, db: Session = Depends(get_db), user: User = Depends(customer_only)
 ):
+    # Without this check, register_document trusted whatever file_url the
+    # client sent — a user could register any URL (someone else's document,
+    # an unrelated site) as their verification doc without ever uploading
+    # anything. Require it to match the presigned-upload path we handed out
+    # for this specific user.
+    expected_prefix = f"{settings.S3_PUBLIC_ENDPOINT}/{settings.S3_BUCKET}/documents/{user.id}/"
+    if not payload.file_url.startswith(expected_prefix):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "file_url does not match a document uploaded by this account"
+        )
     doc = DocumentRecord(user_id=user.id, document_type=payload.document_type, file_url=payload.file_url)
     db.add(doc)
     db.commit()
