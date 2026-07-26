@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.deps import get_db, require_role
 from app.models.models import Booking, User
 from app.schemas.common import BookingCreateIn, BookingDetailOut, BookingOut
-from app.services.booking_service import change_status, create_booking
+from app.services.booking_service import cancel_booking, create_booking
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 customer_only = require_role(["customer"])
@@ -56,4 +56,4 @@ def my_booking_detail(booking_id: int, db: Session = Depends(get_db), user: User
 @router.post("/{booking_id}/cancel", response_model=BookingOut)
 def cancel_my_booking(booking_id: int, db: Session = Depends(get_db), user: User = Depends(customer_only)):
     booking = _get_own_booking(db, booking_id, user)
-    return change_status(db, booking, "cancelled", changed_by=user.id)
+    return cancel_booking(db, booking, actor_id=user.id, enforce_policy=True)
