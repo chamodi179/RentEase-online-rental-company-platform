@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import AuthNav from "./auth-nav";
 
 export const metadata: Metadata = {
   title: "RentEase",
@@ -20,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/" className="hover:text-ink">Browse</Link>
               <Link href="/search" className="hover:text-ink">Search</Link>
               <Link href="/account/bookings" className="hover:text-ink">My Bookings</Link>
-              <Link href="/login" className="btn-secondary !py-1.5 !px-4 text-sm">Log in</Link>
+              <AuthNav />
             </nav>
           </div>
         </header>
