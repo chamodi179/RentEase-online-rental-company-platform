@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from jwt import PyJWTError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.deps import get_current_user, get_db
-from app.core.security import create_access_token, create_refresh_token, verify_password
+from app.core.security import create_access_token, create_refresh_token, decode_token, verify_password
 from app.models.models import User
 from app.schemas.common import LoginIn, UserOut
 
@@ -27,6 +28,30 @@ def admin_login(payload: LoginIn, response: Response, db: Session = Depends(get_
 
     response.set_cookie("access_token", create_access_token(user.id, user.role), **COOKIE_KWARGS)
     response.set_cookie("refresh_token", create_refresh_token(user.id, user.role), **COOKIE_KWARGS)
+    return user
+
+
+@router.post("/refresh", response_model=UserOut)
+def admin_refresh(
+    response: Response, refresh_token: str | None = Cookie(default=None), db: Session = Depends(get_db)
+):
+    """See the matching public/auth.py refresh endpoint — same gap existed
+    here, so staff got logged out on every access-token expiry too."""
+    if not refresh_token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    try:
+        payload = decode_token(refresh_token)
+        if payload.get("type") != "refresh":
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token type")
+        user_id = int(payload["sub"])
+    except (PyJWTError, KeyError, ValueError):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired refresh token")
+
+    user = db.get(User, user_id)
+    if not user or not user.is_active or user.role not in ("staff", "super_admin"):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
+
+    response.set_cookie("access_token", create_access_token(user.id, user.role), **COOKIE_KWARGS)
     return user
 
 

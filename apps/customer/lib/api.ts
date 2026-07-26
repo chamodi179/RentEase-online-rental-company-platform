@@ -13,12 +13,24 @@ const API_URL =
     ? process.env.API_URL_INTERNAL || "http://api-public:8000/api/v1"
     : process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api/v1";
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// A 60-minute access_token used to just log the user out once it expired —
+// login also sets a 7-day refresh_token cookie, but nothing ever called
+// POST /auth/refresh to use it. This transparently refreshes once and
+// retries on a 401 before giving up.
+async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     credentials: "include",
     headers: { "Content-Type": "application/json", ...options.headers },
   });
+
+  if (res.status === 401 && !isRetry && path !== "/auth/refresh" && path !== "/auth/login") {
+    const refreshRes = await fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" });
+    if (refreshRes.ok) {
+      return request<T>(path, options, true);
+    }
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed: ${res.status}`);

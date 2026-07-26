@@ -9,12 +9,23 @@ const API_URL =
     ? process.env.ADMIN_API_URL_INTERNAL || "http://api-admin:8000/api/v1"
     : process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:8002/api/v1";
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// Same fix as the customer app's lib/api.ts: login sets a refresh_token
+// cookie but nothing consumed it before, so staff got logged out every
+// time the access token expired. Refresh once, transparently, on a 401.
+async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     credentials: "include",
     headers: { "Content-Type": "application/json", ...options.headers },
   });
+
+  if (res.status === 401 && !isRetry && path !== "/auth/refresh" && path !== "/auth/login") {
+    const refreshRes = await fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" });
+    if (refreshRes.ok) {
+      return request<T>(path, options, true);
+    }
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed: ${res.status}`);
