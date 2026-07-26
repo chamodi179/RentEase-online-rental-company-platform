@@ -79,6 +79,10 @@ class DocumentReviewIn(BaseModel):
     verification_status: str  # approved | rejected
 
 
+class DocumentViewUrlOut(BaseModel):
+    view_url: str
+
+
 class ManualPaymentIn(BaseModel):
     booking_id: int
     type: str  # payment | refund

@@ -24,3 +24,25 @@ def generate_presigned_put(key: str, content_type: str = "application/octet-stre
         Params={"Bucket": settings.S3_BUCKET, "Key": key, "ContentType": content_type},
         ExpiresIn=expires_in,
     )
+
+
+def generate_presigned_get(key: str, expires_in: int = 300) -> str:
+    """A presigned PUT only ever authorizes the upload itself — the bucket
+    stays private, so the plain file_url stored on DocumentRecord can't be
+    opened directly afterward (browsers hit AccessDenied). Viewing a document
+    needs its own, separately-signed GET url, generated on demand."""
+    client = get_presigning_client()
+    return client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.S3_BUCKET, "Key": key},
+        ExpiresIn=expires_in,
+    )
+
+
+def key_from_file_url(file_url: str) -> str:
+    """Recovers the S3 object key from a stored file_url of the form
+    f"{S3_PUBLIC_ENDPOINT}/{S3_BUCKET}/{key}" (see documents.py's presign_upload)."""
+    prefix = f"{settings.S3_PUBLIC_ENDPOINT}/{settings.S3_BUCKET}/"
+    if not file_url.startswith(prefix):
+        raise ValueError("file_url is not a recognized S3 object URL")
+    return file_url[len(prefix):]

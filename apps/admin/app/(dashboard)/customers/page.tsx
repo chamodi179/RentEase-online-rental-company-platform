@@ -26,6 +26,19 @@ export default function CustomersPage() {
     loadPendingDocs();
   }
 
+  // doc.file_url points straight at a private MinIO object — opening it
+  // directly 403s (AccessDenied), since the presigned PUT used at upload
+  // time only ever authorized that one write, not a later read. Fetch a
+  // short-lived presigned GET on click instead.
+  async function viewDocument(docId: number) {
+    try {
+      const { view_url } = await api.get<{ view_url: string }>(`/customers/documents/${docId}/view-url`);
+      window.open(view_url, "_blank", "noreferrer");
+    } catch {
+      alert("Could not load this document.");
+    }
+  }
+
   return (
     <div>
       <h1 className="mb-6 text-xl font-semibold text-graphite">Customers</h1>
@@ -40,9 +53,9 @@ export default function CustomersPage() {
               <div key={doc.id} className="card flex items-center justify-between">
                 <div>
                   <p className="font-medium text-graphite">{doc.document_type}</p>
-                  <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-sm text-action hover:underline">
+                  <button onClick={() => viewDocument(doc.id)} className="text-sm text-action hover:underline">
                     View document
-                  </a>
+                  </button>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => review(doc.id, "approved")} className="btn-secondary">Approve</button>
