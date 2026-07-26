@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.deps import get_db, require_role
 from app.models.models import Booking, User
 from app.schemas.admin import AdminBookingDetailOut, AdminBookingOut, BookingStatusUpdateIn, ManualBookingCreateIn
-from app.services.booking_service import change_status, create_booking
+from app.services.booking_service import cancel_booking, change_status, create_booking
 
 router = APIRouter(prefix="/bookings", tags=["admin-bookings"])
 staff_only = require_role(["staff", "super_admin"])
@@ -31,7 +31,9 @@ def list_bookings(
 
 
 @router.post("", response_model=AdminBookingOut, status_code=status.HTTP_201_CREATED)
-def create_manual_booking(payload: ManualBookingCreateIn, db: Session = Depends(get_db), _=Depends(staff_only)):
+def create_manual_booking(
+    payload: ManualBookingCreateIn, db: Session = Depends(get_db), user: User = Depends(staff_only)
+):
     """For phone/walk-in customers (spec §5.3)."""
     return create_booking(
         db,
@@ -41,6 +43,7 @@ def create_manual_booking(payload: ManualBookingCreateIn, db: Session = Depends(
         branch_dropoff_id=payload.branch_dropoff_id,
         start=payload.start_datetime,
         end=payload.end_datetime,
+        actor_id=user.id,  # audit trail should show which staff member created it, not the customer
     )
 
 
@@ -65,4 +68,8 @@ def update_status(
     booking = db.get(Booking, booking_id)
     if not booking:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
+    if payload.new_status == "cancelled":
+        # Staff can override the 48h customer-facing window, but cancelling
+        # a paid booking should still trigger a refund either way.
+        return cancel_booking(db, booking, actor_id=user.id, enforce_policy=False)
     return change_status(db, booking, payload.new_status, changed_by=user.id)
