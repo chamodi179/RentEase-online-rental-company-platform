@@ -8,6 +8,7 @@ from app.core.deps import get_db, require_role
 from app.core.s3 import generate_presigned_put
 from app.models.models import DocumentRecord, User
 from app.schemas.common import DocumentOut, DocumentRegisterIn, PresignOut, PresignRequest
+from app.services.audit_service import record_audit_log
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 customer_only = require_role(["customer"])
@@ -41,6 +42,11 @@ def register_document(
         )
     doc = DocumentRecord(user_id=user.id, document_type=payload.document_type, file_url=payload.file_url)
     db.add(doc)
+    db.flush()
+    record_audit_log(
+        db, actor_id=user.id, action="document.uploaded",
+        entity_type="document", entity_id=doc.id,
+    )
     db.commit()
     db.refresh(doc)
     return doc
