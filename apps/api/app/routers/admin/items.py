@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import settings
 from app.core.deps import get_db, require_role
 from app.core.s3 import generate_presigned_put
-from app.models.models import Category, Item, ItemCatalog, ItemPhoto
+from app.models.models import Category, Item, ItemCatalog, ItemPhoto, User
 from app.schemas.admin import (
     AdminCatalogOut,
     AdminItemOut,
@@ -17,6 +17,7 @@ from app.schemas.admin import (
     ItemUnitUpdateIn,
 )
 from app.schemas.common import CategoryOut, ItemPhotoOut, PresignOut
+from app.services.audit_service import record_audit_log
 
 router = APIRouter(prefix="/items", tags=["admin-items"])
 staff_only = require_role(["staff", "super_admin"])
@@ -48,9 +49,16 @@ def list_catalog(db: Session = Depends(get_db), _=Depends(staff_only)):
 
 
 @router.post("/catalog", status_code=status.HTTP_201_CREATED)
-def create_catalog_entry(payload: ItemCatalogCreateIn, db: Session = Depends(get_db), _=Depends(staff_only)):
+def create_catalog_entry(
+    payload: ItemCatalogCreateIn, db: Session = Depends(get_db), user: User = Depends(staff_only)
+):
     entry = ItemCatalog(category_id=payload.category_id)
     db.add(entry)
+    db.flush()
+    record_audit_log(
+        db, actor_id=user.id, action="item_catalog.created",
+        entity_type="item_catalog", entity_id=entry.id,
+    )
     db.commit()
     db.refresh(entry)
     return {"id": entry.id, "category_id": entry.category_id}
@@ -75,7 +83,7 @@ def presign_catalog_photo(
 
 @router.post("/catalog/{catalog_id}/photos", response_model=ItemPhotoOut, status_code=status.HTTP_201_CREATED)
 def register_catalog_photo(
-    catalog_id: int, payload: ItemPhotoRegisterIn, db: Session = Depends(get_db), _=Depends(staff_only)
+    catalog_id: int, payload: ItemPhotoRegisterIn, db: Session = Depends(get_db), user: User = Depends(staff_only)
 ):
     catalog = db.get(ItemCatalog, catalog_id)
     if not catalog:
@@ -90,46 +98,71 @@ def register_catalog_photo(
         )
     photo = ItemPhoto(catalog_id=catalog_id, url=payload.file_url, sort_order=payload.sort_order)
     db.add(photo)
+    db.flush()
+    record_audit_log(
+        db, actor_id=user.id, action="item_photo.created",
+        entity_type="item_photo", entity_id=photo.id,
+    )
     db.commit()
     db.refresh(photo)
     return photo
 
 
 @router.delete("/catalog/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_catalog_photo(photo_id: int, db: Session = Depends(get_db), _=Depends(staff_only)):
+def delete_catalog_photo(photo_id: int, db: Session = Depends(get_db), user: User = Depends(staff_only)):
     photo = db.get(ItemPhoto, photo_id)
     if not photo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Photo not found")
+    photo_id_for_log = photo.id
     db.delete(photo)
+    record_audit_log(
+        db, actor_id=user.id, action="item_photo.deleted",
+        entity_type="item_photo", entity_id=photo_id_for_log,
+    )
     db.commit()
 
 
 @router.post("", response_model=AdminItemOut, status_code=status.HTTP_201_CREATED)
-def create_item(payload: ItemUnitCreateIn, db: Session = Depends(get_db), _=Depends(staff_only)):
+def create_item(payload: ItemUnitCreateIn, db: Session = Depends(get_db), user: User = Depends(staff_only)):
     item = Item(**payload.model_dump())
     db.add(item)
+    db.flush()
+    record_audit_log(
+        db, actor_id=user.id, action="item.created",
+        entity_type="item", entity_id=item.id,
+    )
     db.commit()
     db.refresh(item)
     return item
 
 
 @router.patch("/{item_id}", response_model=AdminItemOut)
-def update_item(item_id: int, payload: ItemUnitUpdateIn, db: Session = Depends(get_db), _=Depends(staff_only)):
+def update_item(
+    item_id: int, payload: ItemUnitUpdateIn, db: Session = Depends(get_db), user: User = Depends(staff_only)
+):
     item = db.get(Item, item_id)
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
+    record_audit_log(
+        db, actor_id=user.id, action="item.updated",
+        entity_type="item", entity_id=item.id,
+    )
     db.commit()
     db.refresh(item)
     return item
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_item(item_id: int, db: Session = Depends(get_db), _=Depends(staff_only)):
+def delete_item(item_id: int, db: Session = Depends(get_db), user: User = Depends(staff_only)):
     item = db.get(Item, item_id)
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found")
     # Soft-delete via status, matching the item lifecycle enum instead of a hard DELETE.
     item.status = "retired"
+    record_audit_log(
+        db, actor_id=user.id, action="item.retired",
+        entity_type="item", entity_id=item.id,
+    )
     db.commit()
