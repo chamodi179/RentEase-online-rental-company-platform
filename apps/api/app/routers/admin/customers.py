@@ -7,6 +7,7 @@ from app.core.s3 import generate_presigned_get, key_from_file_url
 from app.models.models import Booking, DocumentRecord, User
 from app.schemas.admin import CustomerOut, DocumentReviewIn, DocumentViewUrlOut
 from app.schemas.common import BookingOut, DocumentOut
+from app.services.audit_service import record_audit_log
 
 router = APIRouter(prefix="/customers", tags=["admin-customers"])
 staff_only = require_role(["staff", "super_admin"])
@@ -65,6 +66,10 @@ def review_document(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification_status")
     doc.verification_status = payload.verification_status
     doc.reviewed_by = user.id
+    record_audit_log(
+        db, actor_id=user.id, action=f"document.{payload.verification_status}",
+        entity_type="document", entity_id=doc.id,
+    )
     db.commit()
     db.refresh(doc)
     return doc
