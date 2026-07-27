@@ -24,6 +24,7 @@ const NAV = [
   { href: "/", label: "Dashboard" },
   { href: "/bookings", label: "Bookings" },
   { href: "/inventory", label: "Inventory" },
+  { href: "/catalog", label: "Catalog & Photos" },
   { href: "/customers", label: "Customers" },
   { href: "/payments", label: "Payments" },
   { href: "/staff", label: "Staff" },

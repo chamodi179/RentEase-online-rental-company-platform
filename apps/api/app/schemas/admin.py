@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr
 
-from app.schemas.common import BookingDetailOut, OrmBase, UserOut
+from app.schemas.common import BookingDetailOut, CategoryOut, ItemPhotoOut, OrmBase, PresignOut, PresignRequest, UserOut
 
 
 class DashboardSummaryOut(BaseModel):
@@ -33,6 +33,24 @@ class ItemUnitUpdateIn(BaseModel):
     deposit_amount: Decimal | None = None
     status: str | None = None
     branch_id: int | None = None
+
+
+class AdminCatalogOut(OrmBase):
+    id: int
+    category_id: int
+    category: CategoryOut | None = None
+    photos: list[ItemPhotoOut] = []
+
+
+class ItemPhotoPresignIn(PresignRequest):
+    """Same shape as the shared PresignRequest (filename + content_type) —
+    kept as a distinct name so it's clear this presign is scoped to a
+    catalog entry's photos, not documents."""
+
+
+class ItemPhotoRegisterIn(BaseModel):
+    file_url: str
+    sort_order: int = 0
 
 
 class AdminItemOut(OrmBase):

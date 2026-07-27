@@ -62,6 +62,10 @@ export default function InventoryPage() {
 
       {showForm && (
         <form onSubmit={createItem} className="card mb-6 grid grid-cols-2 gap-3">
+          <p className="col-span-2 text-xs text-graphite-soft">
+            Need a Catalog ID, or want to add photos first? Use{" "}
+            <a href="/catalog" className="underline">Catalog &amp; Photos</a>.
+          </p>
           <input required placeholder="Catalog ID" value={form.catalog_id} onChange={(e) => setForm({ ...form, catalog_id: e.target.value })} className="input" />
           <input required placeholder="Branch ID" value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })} className="input" />
           <input required placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input col-span-2" />
