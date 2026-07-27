@@ -7,6 +7,7 @@ from app.core.deps import get_current_user, get_db
 from app.core.security import create_access_token, create_refresh_token, decode_token, verify_password
 from app.models.models import User
 from app.schemas.common import LoginIn, UserOut
+from app.services.audit_service import record_audit_log
 
 router = APIRouter(prefix="/auth", tags=["admin-auth"])
 
@@ -22,10 +23,26 @@ def admin_login(payload: LoginIn, response: Response, db: Session = Depends(get_
         .first()
     )
     if not user or not verify_password(payload.password, user.password_hash):
+        if user:
+            record_audit_log(
+                db, actor_id=user.id, action="staff.login_failed",
+                entity_type="staff", entity_id=user.id,
+            )
+            db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not user.is_active:
+        record_audit_log(
+            db, actor_id=user.id, action="staff.login_blocked",
+            entity_type="staff", entity_id=user.id,
+        )
+        db.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is deactivated")
 
+    record_audit_log(
+        db, actor_id=user.id, action="staff.logged_in",
+        entity_type="staff", entity_id=user.id,
+    )
+    db.commit()
     response.set_cookie("access_token", create_access_token(user.id, user.role), **COOKIE_KWARGS)
     response.set_cookie("refresh_token", create_refresh_token(user.id, user.role), **COOKIE_KWARGS)
     return user
