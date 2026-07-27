@@ -102,31 +102,24 @@ def can_cancel_free(start: datetime) -> bool:
     return start - datetime.now() >= timedelta(hours=CANCELLATION_WINDOW_HOURS)
 
 
-def cancel_booking(
-    db: Session, booking: Booking, *, actor_id: int | None, enforce_policy: bool
-) -> Booking:
-    """Shared cancel path for both the customer and admin flows.
+def cancel_booking(db: Session, booking: Booking, *, actor_id: int | None) -> Booking:
+    """Shared cancel path for both the customer and admin flows (spec §4.3).
 
-    enforce_policy=True (customer self-serve cancel) blocks cancellation
-    inside the 48h window — this used to only be enforced by hiding the
-    button in the frontend, so calling the endpoint directly bypassed it
-    entirely. Staff cancellations (enforce_policy=False) can still override
-    at any time, e.g. for a customer who calls in.
-
-    If the booking was already paid (status == "confirmed"), a refund is
-    triggered after the status change.
+    Cancellation and refund eligibility are deliberately separate: a
+    pending/confirmed booking can ALWAYS be cancelled — change_status()'s
+    ALLOWED_TRANSITIONS already enforces that those are the only states it's
+    legal from. Only the *refund* outcome is time-gated: ≥48h before pickup
+    gets a full refund, <48h still cancels but forfeits the payment. (An
+    earlier version of this function incorrectly blocked cancellation itself
+    inside the 48h window for customers — that's the exact conflation the
+    spec calls out as wrong.)
     """
-    if enforce_policy and not can_cancel_free(booking.start_datetime):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            f"This booking starts in under {CANCELLATION_WINDOW_HOURS}h and can no longer "
-            "be cancelled online. Contact support for help.",
-        )
-
     was_paid = booking.status == "confirmed"
+    refund_eligible = can_cancel_free(booking.start_datetime)
+
     booking = change_status(db, booking, "cancelled", changed_by=actor_id)
 
-    if was_paid:
+    if was_paid and refund_eligible:
         from app.services.refund_service import refund_booking_payment  # local import avoids a cycle
         refund_booking_payment(db, booking)
 

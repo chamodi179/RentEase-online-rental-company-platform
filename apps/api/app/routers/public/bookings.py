@@ -56,4 +56,4 @@ def my_booking_detail(booking_id: int, db: Session = Depends(get_db), user: User
 @router.post("/{booking_id}/cancel", response_model=BookingOut)
 def cancel_my_booking(booking_id: int, db: Session = Depends(get_db), user: User = Depends(customer_only)):
     booking = _get_own_booking(db, booking_id, user)
-    return cancel_booking(db, booking, actor_id=user.id, enforce_policy=True)
+    return cancel_booking(db, booking, actor_id=user.id)

@@ -66,13 +66,19 @@ export default function BookingDetailPage({ params }: { params: { id: string } }
 
       {["pending", "confirmed"].includes(booking.status) && (
         <div className="mt-6">
-          {canCancel(booking.start_datetime) ? (
-            <button onClick={cancel} disabled={cancelling} className="btn-secondary">
-              {cancelling ? "Cancelling…" : "Cancel booking (free before 48h)"}
-            </button>
-          ) : (
-            <p className="text-sm text-ink-soft">This booking is within 48 hours of pickup and can no longer be cancelled for free.</p>
-          )}
+          <button onClick={cancel} disabled={cancelling} className="btn-secondary">
+            {cancelling ? "Cancelling…" : "Cancel booking"}
+          </button>
+          {/* Cancellation is always available (spec §4.3) — only the refund
+              outcome depends on timing, and that's the API's call to make,
+              not a client-side gate. This is informational only. */}
+          <p className="mt-2 text-sm text-ink-soft">
+            {booking.status !== "confirmed"
+              ? "This booking hasn't been paid yet, so cancelling is free."
+              : canCancel(booking.start_datetime)
+              ? "You're more than 48h from pickup, so cancelling now gets a full refund."
+              : "This booking starts in under 48 hours — cancelling now will not refund your payment."}
+          </p>
         </div>
       )}
     </div>

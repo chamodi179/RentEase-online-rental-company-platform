@@ -69,7 +69,8 @@ def update_status(
     if not booking:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
     if payload.new_status == "cancelled":
-        # Staff can override the 48h customer-facing window, but cancelling
-        # a paid booking should still trigger a refund either way.
-        return cancel_booking(db, booking, actor_id=user.id, enforce_policy=False)
+        # Same fixed policy as the customer-facing cancel (spec §4.3): the
+        # cancellation itself always goes through, cancel_booking() only
+        # decides refund eligibility from the 48h window internally.
+        return cancel_booking(db, booking, actor_id=user.id)
     return change_status(db, booking, payload.new_status, changed_by=user.id)
