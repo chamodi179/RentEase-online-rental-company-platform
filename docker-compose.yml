@@ -63,6 +63,10 @@ services:
 
   # One-shot init: creates the "rentease" bucket if it doesn't exist yet,
   # then exits. Presigned PUTs 403 until this bucket exists.
+  # The bucket itself stays private (KYC documents live here too), but
+  # item-photos/* is opened up for anonymous read — catalog photos are
+  # public-facing product images, not sensitive documents, so there's no
+  # reason to pay for presigned-GET signing/expiry on every catalog view.
   minio-init:
     image: minio/mc
     depends_on:
@@ -71,6 +75,7 @@ services:
       /bin/sh -c "
       until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done;
       mc mb --ignore-existing local/rentease;
+      mc anonymous set download local/rentease/item-photos;
       "
 
   # ---- Backend: same image, two isolated running instances ----
