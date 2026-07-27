@@ -1,5 +1,6 @@
 import Link from "next/link";
 import LogoutButton from "./LogoutButton";
+import UserGreeting from "./UserGreeting";
 
 // This layout — and its sidebar <Link>s — only applies to routes inside
 // the (dashboard) route group, i.e. everything except /login. That
@@ -52,7 +53,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className="flex-1">
-        <header className="flex items-center justify-end border-b border-line bg-surface px-6 py-3">
+        <header className="flex items-center justify-end gap-4 border-b border-line bg-surface px-6 py-3">
+          <UserGreeting />
           <LogoutButton />
         </header>
         <main className="p-6">{children}</main>
