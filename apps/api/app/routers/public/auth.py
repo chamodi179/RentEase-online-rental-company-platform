@@ -7,6 +7,7 @@ from app.core.deps import get_current_user, get_db
 from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
 from app.models.models import User
 from app.schemas.common import LoginIn, RegisterIn, UserOut
+from app.services.audit_service import record_audit_log
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -25,6 +26,11 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
         role="customer",
     )
     db.add(user)
+    db.flush()
+    record_audit_log(
+        db, actor_id=user.id, action="customer.registered",
+        entity_type="customer", entity_id=user.id,
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -34,10 +40,26 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
 def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email, User.role == "customer").first()
     if not user or not verify_password(payload.password, user.password_hash):
+        if user:
+            record_audit_log(
+                db, actor_id=user.id, action="customer.login_failed",
+                entity_type="customer", entity_id=user.id,
+            )
+            db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not user.is_active:
+        record_audit_log(
+            db, actor_id=user.id, action="customer.login_blocked",
+            entity_type="customer", entity_id=user.id,
+        )
+        db.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is deactivated")
 
+    record_audit_log(
+        db, actor_id=user.id, action="customer.logged_in",
+        entity_type="customer", entity_id=user.id,
+    )
+    db.commit()
     response.set_cookie("access_token", create_access_token(user.id, user.role), **COOKIE_KWARGS)
     response.set_cookie("refresh_token", create_refresh_token(user.id, user.role), **COOKIE_KWARGS)
     return user
