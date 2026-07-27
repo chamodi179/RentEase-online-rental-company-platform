@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.deps import get_db, require_role
 from app.models.models import Booking, Payment, User
 from app.schemas.common import BookingOut, CheckoutSessionOut
+from app.services.audit_service import record_audit_log
 from app.services.booking_service import change_status
 from app.worker import send_booking_confirmation_email
 
@@ -15,15 +16,25 @@ customer_only = require_role(["customer"])
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-def _confirm_booking_paid(db: Session, booking: Booking, gateway_reference: str) -> Booking:
+def _confirm_booking_paid(db: Session, booking: Booking, gateway_reference: str, *, source: str) -> Booking:
     """Idempotent: safe to call from both the webhook and the success-page
-    sync check, whichever gets there first."""
+    sync check, whichever gets there first. `source` ("webhook" or "sync")
+    is recorded on the audit row so it's visible afterward which path
+    actually did the confirming — useful since these two can race."""
     if booking.status != "pending":
         return booking
-    db.add(Payment(
+    payment = Payment(
         booking_id=booking.id, type="payment", amount=booking.total_amount,
         method="card", gateway_reference=gateway_reference, status="success",
-    ))
+    )
+    db.add(payment)
+    db.flush()
+    # No human actor here — Stripe (via webhook) or an automated post-redirect
+    # check confirmed this, not a person, so actor_id stays NULL.
+    record_audit_log(
+        db, actor_id=None, action=f"payment.recorded_stripe:{source}",
+        entity_type="payment", entity_id=payment.id,
+    )
     booking = change_status(db, booking, "confirmed", changed_by=None)
     send_booking_confirmation_email.delay(
         booking.booking_reference,
@@ -96,7 +107,7 @@ def sync_checkout_session(
     if session.metadata.get("booking_id") != str(booking.id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Session does not match booking")
     if session.payment_status == "paid":
-        booking = _confirm_booking_paid(db, booking, gateway_reference=session.id)
+        booking = _confirm_booking_paid(db, booking, gateway_reference=session.id, source="sync")
     return booking
 
 
@@ -117,6 +128,6 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         booking_id = session.get("metadata", {}).get("booking_id")
         booking = db.get(Booking, int(booking_id)) if booking_id else None
         if booking and session.get("payment_status") == "paid":
-            _confirm_booking_paid(db, booking, gateway_reference=session.get("id"))
+            _confirm_booking_paid(db, booking, gateway_reference=session.get("id"), source="webhook")
 
     return {"received": True}
