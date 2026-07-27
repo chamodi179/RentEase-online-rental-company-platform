@@ -33,6 +33,11 @@ export interface ItemDetail extends ItemListing {
   category: Category | null;
 }
 
+export interface BookedRange {
+  start_datetime: string;
+  end_datetime: string;
+}
+
 export interface PriceQuote {
   days: number;
   base_amount: string;

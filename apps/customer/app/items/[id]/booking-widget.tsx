@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import type { ItemDetail, PriceQuote } from "@/lib/types";
+import AvailabilityCalendar from "./availability-calendar";
 
 export default function BookingWidget({ item }: { item: ItemDetail }) {
   const router = useRouter();
@@ -12,6 +13,13 @@ export default function BookingWidget({ item }: { item: ItemDetail }) {
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  function handleCalendarSelect(newStart: string, newEnd: string) {
+    setStart(newStart);
+    setEnd(newEnd);
+    setQuote(null);
+    setError(null);
+  }
 
   async function getQuote() {
     setError(null);
@@ -45,14 +53,23 @@ export default function BookingWidget({ item }: { item: ItemDetail }) {
       </p>
       <p className="mt-1 text-sm text-ink-soft">Deposit: ${item.deposit_amount}</p>
 
-      <div className="mt-5 grid grid-cols-2 gap-3">
+      <div className="mt-5 border-t border-line pt-4">
+        <AvailabilityCalendar
+          itemId={item.id}
+          selectedStart={start}
+          selectedEnd={end}
+          onSelect={handleCalendarSelect}
+        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
         <label className="text-sm text-ink-soft">
           Start
-          <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="input mt-1" />
+          <input type="date" value={start} onChange={(e) => { setStart(e.target.value); setQuote(null); }} className="input mt-1" />
         </label>
         <label className="text-sm text-ink-soft">
           End
-          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="input mt-1" />
+          <input type="date" value={end} onChange={(e) => { setEnd(e.target.value); setQuote(null); }} className="input mt-1" />
         </label>
       </div>
 
