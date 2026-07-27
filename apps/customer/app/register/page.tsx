@@ -20,7 +20,7 @@ export default function RegisterPage() {
     setError(null);
     setLoading(true);
     try {
-      await api.post("/auth/register", form);
+      await api.post("/auth/register", { ...form, phone: form.phone.trim() || null });
       await api.post("/auth/login", { email: form.email, password: form.password });
       router.push("/account/bookings");
     } catch (err) {
