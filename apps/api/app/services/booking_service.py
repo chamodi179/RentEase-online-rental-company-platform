@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.models import Booking, Item
+from app.services.audit_service import record_audit_log
 from app.services.availability import is_item_available
 from app.services.pricing import quote_price
 
@@ -79,6 +80,11 @@ def create_booking(
         total_amount=price["total_amount"],
     )
     db.add(booking)
+    db.flush()  # assigns booking.id so the audit row below can reference it
+    record_audit_log(
+        db, actor_id=actor_id if actor_id is not None else customer_id,
+        action="booking.created", entity_type="booking", entity_id=booking.id,
+    )
     db.commit()
     db.refresh(booking)
     return booking
@@ -93,6 +99,10 @@ def change_status(db: Session, booking: Booking, new_status: str, changed_by: in
         )
     _set_history_actor(db, changed_by)
     booking.status = new_status
+    record_audit_log(
+        db, actor_id=changed_by, action=f"booking.status_changed:{new_status}",
+        entity_type="booking", entity_id=booking.id,
+    )
     db.commit()
     db.refresh(booking)
     return booking
@@ -121,6 +131,6 @@ def cancel_booking(db: Session, booking: Booking, *, actor_id: int | None) -> Bo
 
     if was_paid and refund_eligible:
         from app.services.refund_service import refund_booking_payment  # local import avoids a cycle
-        refund_booking_payment(db, booking)
+        refund_booking_payment(db, booking, actor_id=actor_id)
 
     return booking
