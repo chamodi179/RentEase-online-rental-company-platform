@@ -25,7 +25,14 @@ def _confirm_booking_paid(db: Session, booking: Booking, gateway_reference: str)
         method="card", gateway_reference=gateway_reference, status="success",
     ))
     booking = change_status(db, booking, "confirmed", changed_by=None)
-    send_booking_confirmation_email.delay(booking.booking_reference, booking.customer.email)
+    send_booking_confirmation_email.delay(
+        booking.booking_reference,
+        booking.customer.email,
+        item_name=booking.item.name,
+        start_date=booking.start_datetime.strftime("%Y-%m-%d"),
+        end_date=booking.end_datetime.strftime("%Y-%m-%d"),
+        total_amount=str(booking.total_amount),
+    )
     return booking
 
 

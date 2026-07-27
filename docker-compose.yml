@@ -11,6 +11,40 @@ services:
     image: redis:7
     restart: unless-stopped
 
+  # Local SMTP server + web UI for booking confirmation emails (spec §4.2).
+  # The worker actually sends real SMTP messages to this container instead
+  # of just printing to the console — open http://localhost:1080 to see
+  # them land. Swap SMTP_* env vars on the worker service for a real
+  # provider (SES/SendGrid SMTP relay, etc.) in production; no code change
+  # needed.
+  mailer:
+    image: maildev/maildev
+    restart: unless-stopped
+    ports:
+      - "1080:1080" # web UI
+      - "1025:1025" # SMTP
+
+  # Automated daily database backup (spec §6). MySQL itself isn't a
+  # container here (see NOTE above) — this dumps the host's MySQL the same
+  # way the API containers reach it, via host.docker.internal.
+  db-backup:
+    image: mysql:8
+    restart: unless-stopped
+    entrypoint: ["sh", "/backup.sh"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: rentease
+      RETENTION_DAYS: "7"
+      BACKUP_HOUR: "2" # 2am container-local time
+    volumes:
+      - ./backups/backup.sh:/backup.sh:ro
+      - db_backups:/backups
+
   minio:
     image: minio/minio
     restart: unless-stopped
@@ -99,12 +133,16 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - redis
+      - mailer
     environment:
       DB_HOST: host.docker.internal
       DB_PORT: "3306"
       DB_USER: root
       DB_PASSWORD: root
       DB_NAME: rentease
+      SMTP_HOST: mailer
+      SMTP_PORT: "1025"
+      SMTP_FROM: "RentEase <bookings@rentease.local>"
 
   # ---- Frontends: separate Next.js apps, each pointed at its own instance ----
   customer-web:
@@ -141,3 +179,4 @@ services:
 
 volumes:
   minio_data:
+  db_backups:

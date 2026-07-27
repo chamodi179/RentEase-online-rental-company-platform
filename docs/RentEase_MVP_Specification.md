@@ -285,13 +285,14 @@ Unchanged core logic: to check if an item is available for a date range, exclude
 
 ## 8. Tech Stack (MVP)
 
-- Backend: FastAPI + PostgreSQL — matches your existing stack, no new tools to learn.
+- Backend: FastAPI + MySQL/MariaDB (InnoDB) — the schema, triggers, and stored procedures in this repo target MySQL 8 / MariaDB, not PostgreSQL. This supersedes the original PostgreSQL framing: the double-booking prevention logic (`SELECT ... FOR UPDATE` plus a composite availability index) was implemented and verified against MySQL/MariaDB, and migrating engines at this point would mean rewriting and re-verifying that logic for comparatively little benefit at MVP stage.
 - Frontend: Next.js for the customer site; a simple React admin panel (can even be a second set of routes in the same Next.js app for MVP).
+- Background jobs: Celery + Redis — already implemented (booking confirmation email, and available for other async work) rather than deferred. Kept lightweight (single worker, no beat scheduler beyond what's needed) so it doesn't add real operational overhead at MVP scale.
 - File storage: S3-compatible storage (or MinIO, given your existing familiarity) for photos and documents.
 - Payments: Stripe (test mode is enough for MVP demo purposes).
 - Hosting: a single Docker Compose deployment on one VM/EC2 instance is enough — no need for orchestration yet.
 
-> **Deferred (not MVP):** Celery/Redis background jobs, SES/SendGrid or Twilio integrations, multi-container orchestration, read replicas — add these when a real feature needs them, not preemptively.
+> **Deferred (not MVP):** SES/SendGrid or Twilio integrations (email currently sends via SMTP, see §4.2), multi-container orchestration, read replicas — add these when a real feature needs them, not preemptively.
 
 ---
 

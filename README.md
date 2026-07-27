@@ -58,6 +58,27 @@ This starts:
 | Public API | http://localhost:8001/docs | Swagger UI, `/public/*` routes only |
 | Admin API | http://localhost:8002/docs | Swagger UI, `/admin/*` routes only |
 | MinIO console | http://localhost:9001 | minioadmin / minioadmin |
+| MailDev (booking confirmation emails) | http://localhost:1080 | catches every email the `worker` sends — nothing leaves your machine |
+
+Booking confirmation emails (spec §4.2) are sent for real over SMTP, not
+just logged — the `worker` container sends them to the `mailer` (MailDev)
+container, viewable at the URL above. Point `SMTP_HOST`/`SMTP_PORT`/etc at a
+real provider (SES, SendGrid's SMTP relay, ...) for production; no code
+change needed.
+
+Database backups (spec §6) run automatically once a day via the `db-backup`
+container — a `mysqldump` of your existing MySQL, gzipped, into the
+`db_backups` Docker volume, with 7-day retention. Inspect what's there with:
+
+```bash
+docker compose exec db-backup ls -lh /backups
+```
+
+or copy the latest one out to your host:
+
+```bash
+docker compose cp db-backup:/backups/$(docker compose exec -T db-backup sh -c 'ls -t /backups | head -1') ./
+```
 
 Both `api-public` and `api-admin` connect to your existing MySQL at
 `host.docker.internal:3306` — no database container is created or managed

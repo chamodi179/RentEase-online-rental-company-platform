@@ -46,6 +46,19 @@ class Settings(BaseSettings):
 
     TAX_RATE: float = 0.0  # MVP hardcodes a single tax rate per spec §5.7
 
+    # Booking confirmation email (spec §4.2). Defaults point at the local
+    # MailDev container added to docker-compose (see mailer service) so the
+    # full send actually happens in dev/demo without needing real SMTP
+    # credentials — swap these for a real provider's SMTP settings in
+    # production (SES/SendGrid SMTP relay both work fine here too, no code
+    # change needed, just env vars).
+    SMTP_HOST: str = "mailer"
+    SMTP_PORT: int = 1025
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = False
+    SMTP_FROM: str = "RentEase <bookings@rentease.local>"
+
     @property
     def SQLALCHEMY_DATABASE_URL(self) -> str:
         return (
