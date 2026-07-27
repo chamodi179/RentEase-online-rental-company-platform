@@ -46,12 +46,17 @@ export default function AuthNav() {
   }
 
   return (
-    <button
-      onClick={handleLogout}
-      disabled={loggingOut}
-      className="btn-secondary !py-1.5 !px-4 text-sm"
-    >
-      {loggingOut ? "Logging out…" : "Log out"}
-    </button>
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-graphite-soft">
+        Hi, <span className="font-medium text-graphite">{user.full_name}</span>
+      </span>
+      <button
+        onClick={handleLogout}
+        disabled={loggingOut}
+        className="btn-secondary !py-1.5 !px-4 text-sm"
+      >
+        {loggingOut ? "Logging out…" : "Log out"}
+      </button>
+    </div>
   );
 }
