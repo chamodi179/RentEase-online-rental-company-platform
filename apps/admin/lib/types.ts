@@ -5,6 +5,7 @@ export interface User {
   phone: string | null;
   role: string;
   is_verified: boolean;
+  is_active: boolean;
   created_at: string;
 }
 
@@ -12,6 +13,25 @@ export interface DashboardSummary {
   todays_pickups: number;
   todays_returns: number;
   active_rentals: number;
+}
+
+export interface Category {
+  id: number;
+  name: string;
+  description: string | null;
+}
+
+export interface ItemPhoto {
+  id: number;
+  url: string;
+  sort_order: number;
+}
+
+export interface AdminCatalog {
+  id: number;
+  category_id: number;
+  category: Category | null;
+  photos: ItemPhoto[];
 }
 
 export interface AdminItem {

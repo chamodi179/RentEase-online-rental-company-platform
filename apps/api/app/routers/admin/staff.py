@@ -34,11 +34,43 @@ def create_staff(payload: StaffCreateIn, db: Session = Depends(get_db), _=Depend
 
 
 @router.post("/{staff_id}/deactivate", response_model=UserOut)
-def deactivate_staff(staff_id: int, db: Session = Depends(get_db), _=Depends(super_admin_only)):
+def deactivate_staff(staff_id: int, db: Session = Depends(get_db), user: User = Depends(super_admin_only)):
     staff = db.get(User, staff_id)
     if not staff or staff.role not in ("staff", "super_admin"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Staff member not found")
+
+    if staff.id == user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot deactivate your own account")
+
+    if staff.role == "super_admin":
+        # If this is the last active super_admin, deactivating them locks
+        # every super_admin_only route (including this one and /reactivate)
+        # with no account left able to call it — an unrecoverable lockout
+        # short of direct DB access. Require at least one other active
+        # super_admin to remain.
+        other_active_super_admins = (
+            db.query(User)
+            .filter(User.role == "super_admin", User.is_active.is_(True), User.id != staff.id)
+            .count()
+        )
+        if other_active_super_admins == 0:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Cannot deactivate the last active super_admin account",
+            )
+
     staff.is_active = False
+    db.commit()
+    db.refresh(staff)
+    return staff
+
+
+@router.post("/{staff_id}/reactivate", response_model=UserOut)
+def reactivate_staff(staff_id: int, db: Session = Depends(get_db), _=Depends(super_admin_only)):
+    staff = db.get(User, staff_id)
+    if not staff or staff.role not in ("staff", "super_admin"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Staff member not found")
+    staff.is_active = True
     db.commit()
     db.refresh(staff)
     return staff

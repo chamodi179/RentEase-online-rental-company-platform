@@ -9,6 +9,7 @@ export default function StaffPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", password: "", role: "staff" });
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   function load() {
     // Returns 403 for anyone logged in as "staff" rather than "super_admin" —
@@ -32,8 +33,24 @@ export default function StaffPage() {
   }
 
   async function deactivate(id: number) {
-    await api.post(`/staff/${id}/deactivate`);
-    load();
+    setActionError(null);
+    try {
+      await api.post(`/staff/${id}/deactivate`);
+      load();
+    } catch (err) {
+      // e.g. self-deactivation or "last active super_admin" guard on the backend
+      setActionError(err instanceof Error ? err.message : "Could not deactivate this account");
+    }
+  }
+
+  async function reactivate(id: number) {
+    setActionError(null);
+    try {
+      await api.post(`/staff/${id}/reactivate`);
+      load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not reactivate this account");
+    }
   }
 
   return (
@@ -61,6 +78,7 @@ export default function StaffPage() {
       )}
 
       <div className="table-shell">
+        {actionError && <p className="border-b border-line px-4 py-2 text-sm text-danger">{actionError}</p>}
         <table className="w-full">
           <thead>
             <tr>
@@ -78,9 +96,13 @@ export default function StaffPage() {
                 <td className="td font-medium">{s.full_name}</td>
                 <td className="td">{s.email}</td>
                 <td className="td">{s.role}</td>
-                <td className="td">{s.is_verified ? "Active" : "Pending"}</td>
+                <td className="td">{s.is_active ? "Active" : "Deactivated"}</td>
                 <td className="td">
-                  <button onClick={() => deactivate(s.id)} className="btn-secondary text-danger">Deactivate</button>
+                  {s.is_active ? (
+                    <button onClick={() => deactivate(s.id)} className="btn-secondary text-danger">Deactivate</button>
+                  ) : (
+                    <button onClick={() => reactivate(s.id)} className="btn-secondary">Reactivate</button>
+                  )}
                 </td>
               </tr>
             ))}

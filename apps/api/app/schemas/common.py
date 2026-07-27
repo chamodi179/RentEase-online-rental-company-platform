@@ -28,6 +28,7 @@ class UserOut(OrmBase):
     phone: str | None
     role: str
     is_verified: bool
+    is_active: bool
     created_at: datetime
 
 
@@ -65,6 +66,12 @@ class ItemListOut(OrmBase):
 
 class ItemDetailOut(ItemListOut):
     category: CategoryOut | None = None
+
+
+# ---- availability ----
+class BookedRangeOut(BaseModel):
+    start_datetime: datetime
+    end_datetime: datetime
 
 
 # ---- bookings ----
