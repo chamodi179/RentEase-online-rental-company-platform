@@ -3,11 +3,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.models import Booking, Payment
+from app.services.audit_service import record_audit_log
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-def refund_booking_payment(db: Session, booking: Booking) -> Payment | None:
+def refund_booking_payment(db: Session, booking: Booking, *, actor_id: int | None = None) -> Payment | None:
     """Issue a refund for a booking's successful payment and record it.
 
     Previously nothing in the backend ever created a `type="refund"` Payment
@@ -67,6 +68,11 @@ def refund_booking_payment(db: Session, booking: Booking) -> Payment | None:
         status=refund_status,
     )
     db.add(refund_payment)
+    db.flush()
+    record_audit_log(
+        db, actor_id=actor_id, action=f"payment.refund_{refund_status}",
+        entity_type="payment", entity_id=refund_payment.id,
+    )
     db.commit()
     db.refresh(refund_payment)
     return refund_payment
