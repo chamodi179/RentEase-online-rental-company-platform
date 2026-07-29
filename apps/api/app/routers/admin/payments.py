@@ -8,6 +8,7 @@ from app.services.audit_service import record_audit_log
 
 router = APIRouter(prefix="/payments", tags=["admin-payments"])
 staff_only = require_role(["staff", "super_admin"])
+super_admin_only = require_role(["super_admin"])
 
 
 @router.get("", response_model=list[PaymentOut])
@@ -19,8 +20,12 @@ def list_payments(status_filter: str | None = None, db: Session = Depends(get_db
 
 
 @router.post("", response_model=PaymentOut, status_code=201)
-def record_manual_payment(payload: ManualPaymentIn, db: Session = Depends(get_db), user=Depends(staff_only)):
-    """Cash / bank transfer for offline payments (spec §5.5)."""
+def record_manual_payment(payload: ManualPaymentIn, db: Session = Depends(get_db), user=Depends(super_admin_only)):
+    """Cash / bank transfer for offline payments (spec §5.5). Restricted to
+    super_admin only — regular staff can view the payments ledger
+    (list_payments above) but cannot record manual transactions, since a
+    manual payment/refund entry bypasses Stripe entirely and is trusted
+    at face value."""
     if not db.get(Booking, payload.booking_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
     payment = Payment(**payload.model_dump(), status="success")
