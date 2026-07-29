@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from jwt import PyJWTError
 from sqlalchemy.orm import Session
@@ -39,10 +41,27 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
 @router.post("/login", response_model=UserOut)
 def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email, User.role == "customer").first()
+
+    # Account-lockout check runs before password verification: a locked
+    # account rejects every attempt, correct password or not, until
+    # locked_until passes.
+    now = datetime.now(timezone.utc)
+    if user and user.locked_until and _as_aware(user.locked_until) > now:
+        retry_minutes = max(1, int((_as_aware(user.locked_until) - now).total_seconds() // 60) + 1)
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Account temporarily locked due to repeated failed logins. Try again in about {retry_minutes} minute(s).",
+        )
+
     if not user or not verify_password(payload.password, user.password_hash):
         if user:
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+            action = "customer.login_failed"
+            if user.failed_login_attempts >= settings.MAX_LOGIN_ATTEMPTS:
+                user.locked_until = now + timedelta(minutes=settings.LOCKOUT_MINUTES)
+                action = "customer.account_locked"
             record_audit_log(
-                db, actor_id=user.id, action="customer.login_failed",
+                db, actor_id=user.id, action=action,
                 entity_type="customer", entity_id=user.id,
             )
             db.commit()
@@ -55,6 +74,9 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is deactivated")
 
+    # Successful login clears any prior failed-attempt count/lock.
+    user.failed_login_attempts = 0
+    user.locked_until = None
     record_audit_log(
         db, actor_id=user.id, action="customer.logged_in",
         entity_type="customer", entity_id=user.id,
@@ -63,6 +85,13 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
     response.set_cookie("access_token", create_access_token(user.id, user.role), **COOKIE_KWARGS)
     response.set_cookie("refresh_token", create_refresh_token(user.id, user.role), **COOKIE_KWARGS)
     return user
+
+
+def _as_aware(dt: datetime) -> datetime:
+    """MySQL DATETIME columns come back naive; treat them as UTC (everything
+    in this app is written/read in UTC) so they can be compared against
+    datetime.now(timezone.utc) without raising."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 @router.post("/refresh", response_model=UserOut)
