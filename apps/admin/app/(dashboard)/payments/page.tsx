@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { Payment } from "@/lib/types";
+import type { Payment, User } from "@/lib/types";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "bg-warn/10 text-warn",
@@ -12,6 +12,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [user, setUser] = useState<User | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ booking_id: "", type: "payment", amount: "", method: "cash", gateway_reference: "" });
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +22,16 @@ export default function PaymentsPage() {
   }
 
   useEffect(load, []);
+  useEffect(() => {
+    api.get<User>("/auth/me").then(setUser).catch(() => setUser(null));
+  }, []);
+
+  // Manual payment/refund recording bypasses Stripe entirely and is
+  // trusted at face value, so — same as the backend (routers/admin/
+  // payments.py: record_manual_payment requires super_admin) — only
+  // super_admin sees the form to do it. Regular staff can still view the
+  // ledger below.
+  const canRecordManualPayment = user?.role === "super_admin";
 
   async function recordPayment(e: React.FormEvent) {
     e.preventDefault();
@@ -45,12 +56,20 @@ export default function PaymentsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-graphite">Payments</h1>
-        <button className="btn-primary" onClick={() => setShowForm((s) => !s)}>
-          {showForm ? "Cancel" : "Record manual payment"}
-        </button>
+        {canRecordManualPayment && (
+          <button className="btn-primary" onClick={() => setShowForm((s) => !s)}>
+            {showForm ? "Cancel" : "Record manual payment"}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {!canRecordManualPayment && user && (
+        <p className="mb-6 text-sm text-graphite-soft">
+          Manual payments and refunds can only be recorded by a super_admin. You&apos;re signed in as {user.role}.
+        </p>
+      )}
+
+      {showForm && canRecordManualPayment && (
         <form onSubmit={recordPayment} className="card mb-6 grid grid-cols-2 gap-3">
           <input required placeholder="Booking ID" value={form.booking_id} onChange={(e) => setForm({ ...form, booking_id: e.target.value })} className="input" />
           <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input">
