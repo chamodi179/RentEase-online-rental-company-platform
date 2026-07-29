@@ -20,6 +20,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # shortened to 1 for APP_MODE=admin, see security.py
 
+    # Account-lockout (brute-force protection) — applies to both customer
+    # (public/auth.py) and staff (admin/auth.py) login. After
+    # MAX_LOGIN_ATTEMPTS consecutive wrong passwords, the account is locked
+    # for LOCKOUT_MINUTES, even if the correct password is supplied next.
+    MAX_LOGIN_ATTEMPTS: int = 5
+    LOCKOUT_MINUTES: int = 15
+
+    # Password policy, enforced in schemas/common.py (RegisterIn) and
+    # schemas/admin.py (StaffCreateIn).
+    PASSWORD_MIN_LENGTH: int = 8
+
     COOKIE_DOMAIN: str = "localhost"
     # False for local http:// dev (this stack has no HTTPS anywhere yet) —
     # a Secure cookie is silently dropped by many browsers over plain HTTP,
