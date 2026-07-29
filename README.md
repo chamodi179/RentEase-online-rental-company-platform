@@ -1,11 +1,17 @@
 # RentEase — Implementation
 
-Full implementation of the architecture in `RentEase_Architecture.md`: one
+Full implementation of the architecture in
+[`docs/RentEase_Architecture.md`](docs/RentEase_Architecture.md): one
 FastAPI codebase deployed as two isolated instances (`api-public`,
 `api-admin`), and two separate Next.js apps (`apps/customer`,
 `apps/admin`) — all backed by your existing local MySQL database
 (`localhost:3306`, user `root`, password `root`, database `rentease`,
 schema already loaded).
+
+This is **not** a tooled monorepo (no pnpm workspaces, no Turborepo, no
+shared `packages/`) — see `docs/RentEase_Architecture.md` §3 for why, and
+what that tradeoff means in practice. It's one Git repo holding three
+independently-managed apps.
 
 ## Layout
 
@@ -13,10 +19,15 @@ schema already loaded).
 rentease/
 ├── apps/
 │   ├── api/         # FastAPI — same code, deployed twice (APP_MODE=public|admin)
-│   ├── customer/    # Next.js — public site + customer account (port 3000)
-│   └── admin/        # Next.js — staff/super_admin dashboard (port 3001)
+│   ├── customer/    # Next.js — public site + customer account (port 3000), own package.json
+│   └── admin/        # Next.js — staff/super_admin dashboard (port 3001), own package.json
+├── docs/
+│   ├── RentEase_Architecture.md
+│   ├── RentEase_MVP_Specification.md
+│   ├── 01_schema.sql ... 06_migration_2026_07.sql
+│   └── ...
 ├── docker-compose.yml
-└── RentEase_Architecture.md
+└── README.md
 ```
 
 Database: your existing local MySQL — `localhost:3306`, user `root`,
@@ -141,10 +152,26 @@ here, since it talks to `localhost:3306` directly with no
 ## What's implemented vs. stubbed
 
 Implemented against the real schema: auth (customer + staff/super_admin,
-separate cookie scopes), browse/search/availability check, price quoting,
-booking creation with the no-double-booking guard, booking status state
-machine + history logging, document upload records, full admin CRUD for
+separate cookie scopes, account lockout after repeated failed logins,
+server-side password policy), browse/search/availability check, price
+quoting, booking creation with the no-double-booking guard, booking status
+state machine + history logging, full admin CRUD for
 inventory/bookings/customers/payments/staff, and the dashboard summary.
+
+**Registration** — `POST /auth/register` (customer) and `POST /staff`
+(super_admin-only staff/super_admin creation) both validate the password
+server-side (`validate_password_strength()` in `core/security.py`: 8+
+characters, at least one letter and one digit, common passwords rejected)
+regardless of what the frontend already checked client-side.
+
+**Account lockout** — both `/auth/login` endpoints (customer and
+staff/admin) track `failed_login_attempts` per account. After 5 wrong
+passwords in a row the account is locked for 15 minutes
+(`MAX_LOGIN_ATTEMPTS` / `LOCKOUT_MINUTES` in `config.py`) — the correct
+password won't work either until the lock expires. Any successful login
+resets the counter. If you're upgrading an existing database rather than
+starting from a fresh `01_schema.sql`, run `docs/06_migration_2026_07.sql`
+first to add the required columns.
 
 **Payments** — real Stripe Checkout integration (`payments.py`): if
 `STRIPE_SECRET_KEY` in `.env` is a real key, `/payments/checkout/{id}`
@@ -154,7 +181,16 @@ the same endpoint instead returns a link to an in-app **mock checkout page**
 (`/mock-checkout/[sessionId]` in the customer app) that simulates a
 successful card payment — this is how you pay for a booking end-to-end
 without needing a Stripe account. Swap in a real key and the mock path is
-never used; nothing else changes.
+never used; nothing else changes. Checkout no longer includes an ID/document
+upload step — it's just review → pay.
+
+**Manual payments** — recording a manual (cash/bank-transfer) payment or
+refund from the admin Payments screen (`POST /admin/payments`) is
+restricted to `super_admin`. Regular `staff` accounts can still view the
+full payments ledger (`GET /admin/payments`); the "Record manual payment"
+form itself is only rendered for a signed-in `super_admin` and the API
+enforces the same restriction independently, so this can't be bypassed by
+calling the API directly.
 
 **Cancellations & refunds** — cancelling a `pending`/`confirmed` booking
 is always allowed; it's the *refund* that's policy-gated
@@ -167,10 +203,34 @@ otherwise — the same as a cash/bank-transfer refund would be handled. Staff
 cancellations (admin dashboard) skip this policy entirely by design; refunds
 there are still manual (Phase 2: "Refund workflow automation").
 
-Stubbed for MVP (clearly marked in code comments — swap for the real
-integration when you're ready): MinIO presigned URLs (`documents.py`
-returns a placeholder instead of calling boto3), and the email task in
-`worker.py` (prints instead of calling SES/SendGrid).
+**Booking confirmation emails** are sent for real over SMTP by the
+`worker` container (`worker.py`), not just logged — see the Docker section
+above.
+
+Nothing in the current codebase is a placeholder/stub — the two things
+that used to be (a document-upload feature that never proxied real files,
+and an email task that only printed) have either been removed entirely
+(document upload — see below) or replaced with a real implementation
+(email, over SMTP).
+
+### Removed: ID/document submission workflow
+
+An earlier version of this project required customers to upload a
+photo of an ID document as a blocking step in checkout, with a
+corresponding admin screen to approve/reject uploads. That workflow has
+been removed in full:
+
+- No `documents` table, model, schemas, or API routes (`/documents/*`,
+  `/customers/documents/*`) — running `docs/01_schema.sql` fresh no longer
+  creates a `documents` table at all; `docs/06_migration_2026_07.sql`
+  drops it on an existing database.
+- Checkout is now just **Review → Pay** — no upload step in between.
+- The admin Customers screen is a plain list + search; there's no
+  pending-document-review section.
+
+Item-catalog **photo** uploads (a completely separate feature, used by
+staff in the admin Catalog screen) are unaffected — they still use the
+same presigned-MinIO-URL pattern.
 
 ## Paying for and cancelling a booking (local dev)
 

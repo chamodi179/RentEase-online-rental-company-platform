@@ -62,27 +62,32 @@ Given RentEase already leans FastAPI + Next.js, the cleanest way to get this spl
 
 ---
 
-## 3. Repository layout (monorepo, pnpm + Turborepo)
+## 3. Repository layout (as actually built — no monorepo tooling)
 
-A monorepo — not two unrelated repos — because the apps share types, an API client, and UI primitives that must never drift out of sync.
+> **Correction (2026-07):** earlier drafts of this document described this
+> as a pnpm + Turborepo monorepo with shared `packages/api-client` and
+> `packages/ui`. That tooling was never actually built — there's no
+> `pnpm-workspace.yaml`, no `turbo.json`, and no `packages/` directory in
+> the delivered project. What exists is simpler: one Git repo holding
+> three independently-managed apps, each with its own `npm`
+> `package.json` / `package-lock.json`. This section now describes that
+> reality instead of the original plan.
 
 ```
 rentease/
 ├── apps/
-│   ├── customer/              # Next.js — public site + customer account
-│   ├── admin/                 # Next.js — staff/super_admin dashboard
-│   └── api/                   # FastAPI — single backend, both apps call it
-├── packages/
-│   ├── api-client/            # Typed fetch client, generated from OpenAPI
-│   ├── ui/                    # Shared design-system components (buttons, inputs, modal)
-│   └── config/                # Shared eslint/tsconfig/tailwind config
+│   ├── customer/               # Next.js — public site + customer account (own package.json)
+│   ├── admin/                  # Next.js — staff/super_admin dashboard (own package.json)
+│   └── api/                    # FastAPI — single backend, both apps call it
+├── docs/                       # architecture, spec, SQL schema/triggers/procedures/seed data
 ├── docker-compose.yml
-├── pnpm-workspace.yaml
-└── turbo.json
+└── README.md
 ```
 
-- `packages/api-client` is generated straight from FastAPI's `/openapi.json` (via `openapi-typescript` or `orval`). Both apps import from it — never hand-write fetch calls to the same endpoint twice.
-- `packages/ui` holds truly generic components only (Button, Input, Card). Admin-specific components (DataTable, StatusBadge) live in `apps/admin`; customer-specific ones (ItemCard, AvailabilityCalendar) live in `apps/customer`. Don't force premature sharing of domain UI.
+- **One Git repo, not a tooled monorepo.** `apps/customer` and `apps/admin` are two ordinary Next.js projects that happen to live side by side. Each is installed and built independently (`cd apps/customer && npm install`, same for `apps/admin`) — there's no root-level install step, no workspace-wide `npm run build`, and no single lockfile shared between them.
+- **No shared `packages/` directory.** There is no generated API client, no shared UI-component package, and no shared eslint/tsconfig/tailwind config package. Each app defines its own `tsconfig.json`, `tailwind.config.ts`, and calls the API with a small hand-written `fetch` wrapper (`lib/api.ts` in each app) rather than a generated, typed client.
+- **Practical effect of not having this tooling:** type drift between the two frontends and the FastAPI schemas is possible and is not caught automatically — if `schemas/common.py` changes a field, nothing fails a build in `apps/customer` or `apps/admin` until it's manually updated and tested. At the project's current size (two frontends, one backend, a handful of shared shapes like `User`/`Booking`/`Payment`) this is a deliberate, acceptable tradeoff rather than an oversight: setting up `pnpm` workspaces + Turborepo + a generated OpenAPI client is real ongoing maintenance for a benefit that only pays off once the number of shared types or the team size grows. If that happens, Section 3's original plan (`packages/api-client` generated from `/openapi.json`, a shared `packages/ui`) is still the right next step — it just hasn't been built yet.
+- `docker-compose.yml` at the repo root is what actually ties the three apps together for local/dev use — see the root `README.md` for how to run everything.
 
 ---
 
@@ -155,6 +160,10 @@ Both apps use JWT access + refresh tokens in **httpOnly, Secure cookies** (not l
 
 Because the cookies are scoped to different subdomains, a customer session cookie is never even sent to the admin app — that's a free extra layer of isolation on top of the role check.
 
+**Account lockout.** Both login endpoints (`/public/auth/login`, `/admin/auth/login`) share the same brute-force protection: `users.failed_login_attempts` increments on each wrong password, and once it reaches `settings.MAX_LOGIN_ATTEMPTS` (default 5), `users.locked_until` is set `settings.LOCKOUT_MINUTES` (default 15) into the future. A locked account is rejected — with a "try again in N minutes" message — even if the very next attempt has the correct password. Any successful login resets both counters to zero. This applies per-account, not per-IP; it is deliberately simple (no CAPTCHA, no IP-based rate limiting) to match MVP scope, and is the right layer to extend first if abuse shows up in practice.
+
+**Password policy.** `RegisterIn` (customer registration) and `StaffCreateIn` (staff/super_admin creation) both validate the password server-side via `validate_password_strength()` in `core/security.py`: minimum 8 characters, at least one letter, at least one digit, and rejection of a short list of common passwords. Both frontends mirror this check client-side for faster feedback, but the server is the source of truth — a request that skips the frontend (e.g. a direct API call) still gets validated.
+
 ---
 
 ## 6. Frontend structure
@@ -171,7 +180,7 @@ app/
 ├── (account)/                  # requires customer auth
 │   ├── bookings/page.tsx       # My Bookings
 │   ├── bookings/[id]/page.tsx
-│   └── checkout/page.tsx       # date select → price → doc upload → Stripe
+│   └── checkout/page.tsx       # date select → price review → Stripe (no document-upload step)
 └── layout.tsx
 ```
 
@@ -187,8 +196,8 @@ app/
 │   ├── inventory/page.tsx       # item CRUD
 │   ├── bookings/page.tsx        # filterable list
 │   ├── bookings/[id]/page.tsx   # detail + status change
-│   ├── customers/page.tsx       # list + document review
-│   ├── payments/page.tsx        # transaction list + manual entry
+│   ├── customers/page.tsx       # list + search (no ID document review — see §7)
+│   ├── payments/page.tsx        # transaction list (all staff) + manual entry (super_admin only)
 │   └── staff/page.tsx           # super_admin only
 └── layout.tsx                   # sidebar nav, auth guard
 ```
@@ -200,10 +209,11 @@ app/
 
 ## 7. Cross-cutting concerns
 
-- **Shared types**: `packages/api-client` types are the single source of truth. If a Pydantic schema changes, regenerate the client — TypeScript will flag every call site that breaks. This is what actually prevents customer/admin drift.
-- **File uploads** (item photos, ID documents): both apps request a **presigned MinIO/S3 URL** from the API, then upload directly from the browser. The API never proxies file bytes.
+- **Shared types**: there is no generated shared client (see Section 3's correction) — each frontend hand-writes its own `lib/types.ts` matching the relevant Pydantic schemas. Keeping these in sync across `apps/customer`, `apps/admin`, and `apps/api/app/schemas` is a manual discipline, not an enforced one.
+- **File uploads** (item-catalog photos): the admin app requests a **presigned MinIO/S3 URL** from the API, then uploads directly from the browser. The API never proxies file bytes. There is no customer-facing ID/document upload step — that workflow (a blocking "upload ID before payment" step in checkout, plus an admin document-review screen) was removed; the `documents` table, its API routes, and the review UI no longer exist. Booking creation and payment only ever require account login, not identity-document review.
 - **Background jobs**: booking confirmation emails, receipt generation — enqueued to Celery from the API, processed by a worker container. Neither frontend talks to Celery directly.
 - **Stripe**: customer app creates a Checkout Session via the API; Stripe webhook hits the API directly (`/public/payments/webhook`), which updates `payments`/`bookings` — never trust the frontend to confirm payment success.
+- **Manual payments/refunds**: recording a manual (cash/bank-transfer) payment or refund (`POST /admin/payments`) is restricted to `super_admin` only — regular `staff` can view the payments ledger (`GET /admin/payments`) but cannot create entries in it, since a manual entry bypasses Stripe and is trusted at face value. Enforced both in the API (`require_role(["super_admin"])`) and in the admin frontend (the "Record manual payment" form only renders for a signed-in `super_admin`).
 
 ---
 
