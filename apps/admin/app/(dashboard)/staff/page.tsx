@@ -4,6 +4,15 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { User } from "@/lib/types";
 
+const MIN_PASSWORD_LENGTH = 8;
+
+function passwordIssue(password: string): string | null {
+  if (password.length < MIN_PASSWORD_LENGTH) return `Password needs at least ${MIN_PASSWORD_LENGTH} characters.`;
+  if (!/[a-zA-Z]/.test(password)) return "Password needs at least one letter.";
+  if (!/[0-9]/.test(password)) return "Password needs at least one number.";
+  return null;
+}
+
 export default function StaffPage() {
   const [staff, setStaff] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -22,6 +31,13 @@ export default function StaffPage() {
   async function createStaff(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    // Mirrors the server-side policy in schemas/admin.py::StaffCreateIn —
+    // the server re-validates regardless, this just avoids a round trip.
+    const issue = passwordIssue(form.password);
+    if (issue) {
+      setError(issue);
+      return;
+    }
     try {
       await api.post("/staff", form);
       setShowForm(false);
@@ -72,6 +88,7 @@ export default function StaffPage() {
             <option value="super_admin">super_admin</option>
           </select>
           <input required type="password" placeholder="Temporary password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="input col-span-2" />
+          <p className="col-span-2 -mt-2 text-xs text-graphite-soft">At least {MIN_PASSWORD_LENGTH} characters, with a letter and a number.</p>
           {error && <p className="col-span-2 text-sm text-danger">{error}</p>}
           <button className="btn-primary col-span-2">Create account</button>
         </form>
