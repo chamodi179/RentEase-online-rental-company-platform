@@ -70,14 +70,6 @@ export interface Customer extends User {
   booking_count: number;
 }
 
-export interface DocumentRecord {
-  id: number;
-  document_type: string;
-  file_url: string;
-  verification_status: "pending" | "approved" | "rejected";
-  created_at: string;
-}
-
 export interface Payment {
   id: number;
   booking_id: number;

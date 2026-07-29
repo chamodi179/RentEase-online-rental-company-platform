@@ -53,6 +53,8 @@ CREATE TABLE users (
     role          ENUM('customer', 'staff', 'super_admin') NOT NULL DEFAULT 'customer',
     is_verified   BOOLEAN       NOT NULL DEFAULT FALSE,
     is_active     BOOLEAN       NOT NULL DEFAULT TRUE,
+    failed_login_attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    locked_until  DATETIME      NULL,
     created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
                                 ON UPDATE CURRENT_TIMESTAMP
@@ -221,30 +223,6 @@ CREATE TABLE payments (
 -- ignored indexing:
 -- CREATE INDEX idx_payments_booking ON payments (booking_id);
 -- CREATE INDEX idx_payments_status  ON payments (status);
-
--- ---------------------------------------------------------------------
--- documents
--- ---------------------------------------------------------------------
-CREATE TABLE documents (
-    id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    user_id             BIGINT UNSIGNED NOT NULL,
-    document_type       ENUM('id_card', 'license', 'other') NOT NULL,
-    file_url            VARCHAR(500)    NOT NULL,
-    verification_status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
-    reviewed_by         BIGINT UNSIGNED NULL,
-    created_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_documents_user
-        FOREIGN KEY (user_id) REFERENCES users (id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINT fk_documents_reviewer
-        FOREIGN KEY (reviewed_by) REFERENCES users (id)
-        ON UPDATE CASCADE ON DELETE SET NULL
-);
-
--- ignored indexing:
--- CREATE INDEX idx_documents_user   ON documents (user_id);
--- CREATE INDEX idx_documents_status ON documents (verification_status);
 
 -- ---------------------------------------------------------------------
 -- audit_logs

@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Booking, ItemDetail, PriceQuote, User } from "@/lib/types";
 
-type Step = "review" | "document" | "payment" | "done";
+type Step = "review" | "payment" | "done";
 
 // useSearchParams() requires a Suspense boundary in the App Router, or the
 // build fails during static prerendering — this wrapper is that boundary.
@@ -28,10 +28,6 @@ function CheckoutContent() {
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [docUploaded, setDocUploaded] = useState(false);
-  const [docFile, setDocFile] = useState<File | null>(null);
-  const [docUploading, setDocUploading] = useState(false);
-  const [docError, setDocError] = useState<string | null>(null);
   // Booking is created once and reused on retry — see createBookingAndPay().
   const [bookingId, setBookingId] = useState<number | null>(null);
   const [paying, setPaying] = useState(false);
@@ -48,44 +44,6 @@ function CheckoutContent() {
 
   if (!itemId || !start || !end) {
     return <div className="mx-auto max-w-2xl px-4 py-16 text-ink-soft">Missing booking details — start over from an item page.</div>;
-  }
-
-  async function submitDocument() {
-    if (!docFile) {
-      setDocError("Choose a file first.");
-      return;
-    }
-    setDocError(null);
-    setDocUploading(true);
-    try {
-      // 1. Ask the API for a presigned MinIO URL for this filename.
-      const { upload_url, file_url } = await api.post<{ upload_url: string; file_url: string }>(
-        "/documents/presign",
-        { filename: docFile.name, content_type: docFile.type || "application/octet-stream" }
-      );
-
-      // 2. Upload the actual file bytes directly to MinIO (not through the API —
-      // the API never proxies file bytes, see architecture doc §7). Plain PUT
-      // with no cookies/credentials, so don't use the api.* wrapper here.
-      const putRes = await fetch(upload_url, {
-        method: "PUT",
-        body: docFile,
-        headers: { "Content-Type": docFile.type || "application/octet-stream" },
-      });
-      if (!putRes.ok) {
-        throw new Error(`Upload to storage failed (${putRes.status})`);
-      }
-
-      // 3. Register the now-real file_url against the booking.
-      await api.post("/documents", { document_type: "id_card", file_url });
-
-      setDocUploaded(true);
-      setStep("payment");
-    } catch (e) {
-      setDocError(e instanceof Error ? e.message : "Could not upload document");
-    } finally {
-      setDocUploading(false);
-    }
   }
 
   async function createBookingAndPay() {
@@ -126,8 +84,8 @@ function CheckoutContent() {
       <h1 className="mb-6 font-display text-2xl font-semibold text-ink">Checkout</h1>
 
       <ol className="mb-8 flex gap-4 text-sm text-ink-soft">
-        {["Review", "Verify", "Pay", "Done"].map((label, i) => (
-          <li key={label} className={["review", "document", "payment", "done"][i] === step ? "font-medium text-ink" : ""}>
+        {["Review", "Pay", "Done"].map((label, i) => (
+          <li key={label} className={["review", "payment", "done"][i] === step ? "font-medium text-ink" : ""}>
             {i + 1}. {label}
           </li>
         ))}
@@ -157,28 +115,8 @@ function CheckoutContent() {
               </div>
             </div>
           ) : (
-            <button className="btn-primary w-full" onClick={() => setStep("document")}>Continue as {user.full_name}</button>
+            <button className="btn-primary w-full" onClick={() => setStep("payment")}>Continue as {user.full_name}</button>
           )}
-        </div>
-      )}
-
-      {step === "document" && (
-        <div className="card">
-          <p className="mb-3 text-ink-soft">Upload one verification document (e.g. ID) to continue.</p>
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            className="input mb-4"
-            onChange={(e) => {
-              setDocFile(e.target.files?.[0] ?? null);
-              setDocError(null);
-            }}
-          />
-          {docError && <p className="mb-3 text-sm text-danger">{docError}</p>}
-          <button className="btn-primary w-full" onClick={submitDocument} disabled={docUploading}>
-            {docUploading ? "Uploading…" : "Upload & continue"}
-          </button>
-          {docUploaded && <p className="mt-2 text-sm text-available">Document uploaded.</p>}
         </div>
       )}
 

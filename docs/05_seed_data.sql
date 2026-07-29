@@ -7,7 +7,6 @@ USE rentease;
 
 SET FOREIGN_KEY_CHECKS = 0; -- remove reference constraints 
 TRUNCATE TABLE audit_logs;
-TRUNCATE TABLE documents;
 TRUNCATE TABLE payments;
 TRUNCATE TABLE booking_status_history;
 TRUNCATE TABLE bookings;
@@ -111,7 +110,6 @@ USE rentease;
 
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE audit_logs;
-TRUNCATE TABLE documents;
 TRUNCATE TABLE payments;
 TRUNCATE TABLE booking_status_history;
 TRUNCATE TABLE bookings;
@@ -230,19 +228,6 @@ INSERT INTO payments (booking_id, type, amount, method, gateway_reference, statu
 (6, 'payment', 11000.00, 'bank_transfer', NULL,             'pending', '2026-07-21 17:05:00');
 
 -- ---------------------------------------------------------------------
--- documents
--- ---------------------------------------------------------------------
-INSERT INTO documents (user_id, document_type, file_url, verification_status, reviewed_by, created_at) VALUES
-(4, 'id_card', 'https://cdn.rentease.lk/docs/4/id_card.jpg', 'approved', 2, '2026-05-01 10:00:00'),
-(4, 'license', 'https://cdn.rentease.lk/docs/4/license.jpg', 'approved', 2, '2026-05-01 10:02:00'),
-(5, 'id_card', 'https://cdn.rentease.lk/docs/5/id_card.jpg', 'approved', 3, '2026-05-10 09:30:00'),
-(5, 'license', 'https://cdn.rentease.lk/docs/5/license.jpg', 'approved', 3, '2026-05-10 09:32:00'),
-(6, 'id_card', 'https://cdn.rentease.lk/docs/6/id_card.jpg', 'pending',  NULL, '2026-07-11 08:00:00'),
-(6, 'license', 'https://cdn.rentease.lk/docs/6/license.jpg', 'rejected', 3, '2026-07-11 08:05:00'),
-(7, 'id_card', 'https://cdn.rentease.lk/docs/7/id_card.jpg', 'approved', 2, '2026-06-15 12:00:00'),
-(7, 'other',   'https://cdn.rentease.lk/docs/7/passport.jpg','approved', 2, '2026-06-15 12:05:00');
-
--- ---------------------------------------------------------------------
 -- audit_logs
 -- ---------------------------------------------------------------------
 INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, created_at) VALUES
@@ -251,6 +236,6 @@ INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, created_at) VA
 (2, 'payment_recorded',      'payment', 1, '2026-06-28 14:05:00'),
 (2, 'item_status_change',    'item',    5, '2026-05-20 10:00:00'),
 (2, 'item_status_change',    'item',    8, '2026-05-22 11:00:00'),
-(3, 'document_reviewed',     'document',6, '2026-07-11 08:05:00'),
+(3, 'customer.registered',   'customer',6, '2026-07-11 08:05:00'),
 (2, 'user_verified',         'user',    7, '2026-06-15 12:10:00'),
 (NULL, 'system_cleanup',     'booking', 5, '2026-05-30 02:00:00');

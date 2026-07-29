@@ -39,7 +39,7 @@ export default function BookingWidget({ item }: { item: ItemDetail }) {
     if (!start || !end) return;
     setLoading(true);
     // Booking details are passed via query string to the checkout page,
-    // which creates the booking after login + document upload (spec §4.2).
+    // which creates the booking straight after login (spec §4.2).
     const params = new URLSearchParams({ item_id: String(item.id), start, end });
     router.push(`/checkout?${params.toString()}`);
     setLoading(false);
