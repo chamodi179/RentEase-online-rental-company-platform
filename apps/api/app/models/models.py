@@ -1,6 +1,6 @@
 from sqlalchemy import (
     BigInteger, Boolean, CheckConstraint, Column, DateTime, Enum, ForeignKey,
-    Numeric, SmallInteger, String, Text, func,
+    Integer, Numeric, SmallInteger, String, Text, func,
 )
 from sqlalchemy.orm import relationship
 
@@ -41,6 +41,12 @@ class User(Base):
                   nullable=False, default="customer")
     is_verified = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
+    # Account-lockout (brute-force protection). failed_login_attempts resets
+    # to 0 on any successful login; once it hits settings.MAX_LOGIN_ATTEMPTS,
+    # locked_until is set settings.LOCKOUT_MINUTES into the future and further
+    # logins are rejected — even with the correct password — until it passes.
+    failed_login_attempts = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -147,18 +153,6 @@ class Payment(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     booking = relationship("Booking")
-
-
-class DocumentRecord(Base):
-    __tablename__ = "documents"
-    id = Column(BigInteger, primary_key=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
-    document_type = Column(Enum("id_card", "license", "other", name="document_type"), nullable=False)
-    file_url = Column(String(500), nullable=False)
-    verification_status = Column(Enum("pending", "approved", "rejected", name="verification_status"),
-                                  nullable=False, default="pending")
-    reviewed_by = Column(BigInteger, ForeignKey("users.id"))
-    created_at = Column(DateTime, server_default=func.now())
 
 
 class AuditLog(Base):

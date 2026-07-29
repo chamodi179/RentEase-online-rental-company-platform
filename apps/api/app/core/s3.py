@@ -28,9 +28,12 @@ def generate_presigned_put(key: str, content_type: str = "application/octet-stre
 
 def generate_presigned_get(key: str, expires_in: int = 300) -> str:
     """A presigned PUT only ever authorizes the upload itself — the bucket
-    stays private, so the plain file_url stored on DocumentRecord can't be
-    opened directly afterward (browsers hit AccessDenied). Viewing a document
-    needs its own, separately-signed GET url, generated on demand."""
+    stays private, so a stored file_url can't be opened directly afterward
+    (browsers hit AccessDenied). Viewing a private object needs its own,
+    separately-signed GET url, generated on demand. Not currently called
+    anywhere (item-catalog photos are served from a public bucket path),
+    kept here as the general-purpose helper for any future private-object
+    read case."""
     client = get_presigning_client()
     return client.generate_presigned_url(
         "get_object",
@@ -41,7 +44,8 @@ def generate_presigned_get(key: str, expires_in: int = 300) -> str:
 
 def key_from_file_url(file_url: str) -> str:
     """Recovers the S3 object key from a stored file_url of the form
-    f"{S3_PUBLIC_ENDPOINT}/{S3_BUCKET}/{key}" (see documents.py's presign_upload)."""
+    f"{S3_PUBLIC_ENDPOINT}/{S3_BUCKET}/{key}" (see presign_catalog_photo in
+    routers/admin/items.py)."""
     prefix = f"{settings.S3_PUBLIC_ENDPOINT}/{settings.S3_BUCKET}/"
     if not file_url.startswith(prefix):
         raise ValueError("file_url is not a recognized S3 object URL")

@@ -1,7 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+
+from app.core.security import validate_password_strength
 
 
 class OrmBase(BaseModel):
@@ -14,6 +16,11 @@ class RegisterIn(BaseModel):
     email: EmailStr
     phone: str | None = None
     password: str
+
+    @field_validator("password")
+    @classmethod
+    def _password_strength(cls, v: str) -> str:
+        return validate_password_strength(v)
 
 
 class LoginIn(BaseModel):
@@ -111,20 +118,7 @@ class BookingDetailOut(BookingOut):
     branch_dropoff: BranchOut
 
 
-# ---- documents ----
-class DocumentOut(OrmBase):
-    id: int
-    document_type: str
-    file_url: str
-    verification_status: str
-    created_at: datetime
-
-
-class DocumentRegisterIn(BaseModel):
-    document_type: str
-    file_url: str
-
-
+# ---- file uploads (used for item-catalog photos — see admin/items.py) ----
 class PresignRequest(BaseModel):
     filename: str
     content_type: str = "application/octet-stream"

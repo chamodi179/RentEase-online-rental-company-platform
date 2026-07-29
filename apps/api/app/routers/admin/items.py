@@ -68,9 +68,9 @@ def create_catalog_entry(
 def presign_catalog_photo(
     catalog_id: int, payload: ItemPhotoPresignIn, db: Session = Depends(get_db), _=Depends(staff_only)
 ):
-    """Mirrors the customer document-upload presign flow (routers/public/documents.py):
-    the API only signs the URL, the browser PUTs the bytes straight to
-    MinIO/S3, and the API never proxies file bytes (architecture doc §7)."""
+    """Presigned-upload pattern for browser-direct file uploads: the API
+    only signs the URL, the browser PUTs the bytes straight to MinIO/S3,
+    and the API never proxies file bytes (architecture doc §7)."""
     catalog = db.get(ItemCatalog, catalog_id)
     if not catalog:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Catalog entry not found")
@@ -88,9 +88,8 @@ def register_catalog_photo(
     catalog = db.get(ItemCatalog, catalog_id)
     if not catalog:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Catalog entry not found")
-    # Same guard as documents.py's register_document: without this, a caller
-    # could register any arbitrary URL as a photo instead of one actually
-    # uploaded via the presign step above.
+    # Without this guard, a caller could register any arbitrary URL as a
+    # photo instead of one actually uploaded via the presign step above.
     expected_prefix = f"{settings.S3_PUBLIC_ENDPOINT}/{settings.S3_BUCKET}/item-photos/{catalog_id}/"
     if not payload.file_url.startswith(expected_prefix):
         raise HTTPException(

@@ -1,8 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
+from app.core.security import validate_password_strength
 from app.schemas.common import BookingDetailOut, CategoryOut, ItemPhotoOut, OrmBase, PresignOut, PresignRequest, UserOut
 
 
@@ -93,14 +94,6 @@ class ManualBookingCreateIn(BaseModel):
     end_datetime: datetime
 
 
-class DocumentReviewIn(BaseModel):
-    verification_status: str  # approved | rejected
-
-
-class DocumentViewUrlOut(BaseModel):
-    view_url: str
-
-
 class ManualPaymentIn(BaseModel):
     booking_id: int
     type: str  # payment | refund
@@ -125,6 +118,11 @@ class StaffCreateIn(BaseModel):
     phone: str | None = None
     password: str
     role: str = "staff"  # staff | super_admin
+
+    @field_validator("password")
+    @classmethod
+    def _password_strength(cls, v: str) -> str:
+        return validate_password_strength(v)
 
 
 class CustomerOut(UserOut):
