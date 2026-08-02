@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Payment, User } from "@/lib/types";
+import { useBookingEvents } from "@/lib/useBookingEvents";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "bg-warn/10 text-warn",
@@ -25,6 +26,11 @@ export default function PaymentsPage() {
   useEffect(() => {
     api.get<User>("/auth/me").then(setUser).catch(() => setUser(null));
   }, []);
+
+  // Same channel as the bookings pages — a payment/refund recorded here,
+  // by another admin tab, or by the automatic pre-pickup refund on cancel,
+  // should show up without a manual reload.
+  useBookingEvents(() => load());
 
   // Manual payment/refund recording bypasses Stripe entirely and is
   // trusted at face value, so — same as the backend (routers/admin/
