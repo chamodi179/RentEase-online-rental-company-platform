@@ -192,16 +192,73 @@ form itself is only rendered for a signed-in `super_admin` and the API
 enforces the same restriction independently, so this can't be bypassed by
 calling the API directly.
 
-**Cancellations & refunds** — cancelling a `pending`/`confirmed` booking
-is always allowed; it's the *refund* that's policy-gated
-(`CANCELLATION_FREE_HOURS`, default 48, in `config.py`): full refund if
-cancelled that far out from pickup, no refund if closer in. Refunds are
-recorded `pending` first, then `issue_refund()` attempts a real
-`stripe.Refund.create(...)` when Stripe is configured, or leaves it
-`pending` for manual reconciliation via the admin Payments screen
-otherwise — the same as a cash/bank-transfer refund would be handled. Staff
-cancellations (admin dashboard) skip this policy entirely by design; refunds
-there are still manual (Phase 2: "Refund workflow automation").
+**Cancellations & refunds** — cancellation and refund are two separate
+policies now, one for customers and one for staff:
+
+- **Customer self-service** (`POST /bookings/{id}/cancel`,
+  `customer_can_cancel()` in `booking_service.py`): an unpaid (`pending`)
+  booking can always be cancelled — nothing's at stake yet. A paid
+  (`confirmed`) booking can be self-cancelled if **either** of two
+  independent windows is open: more than `CANCELLATION_WINDOW_HOURS`
+  (default 48) before pickup, or within `CONFIRMED_COOLING_OFF_HOURS`
+  (default 24) of when it was paid — a no-questions-asked window
+  regardless of how close pickup is, using the confirm timestamp from
+  `booking_status_history`, not `updated_at`. Outside both windows the API
+  returns a 400 telling the customer to contact support — the "Cancel
+  booking" button on `/account/bookings/{id}` hides itself for the same
+  reason rather than showing a call that would just fail.
+- **Staff** (`POST /admin/bookings/{id}/status` with
+  `new_status: "cancelled"`): can cancel **any** booking, at any point from
+  creation up to pickup (`pending` or `confirmed`) — no 48h/24h
+  restriction. Unlike a customer's own cancellation, this **never**
+  auto-refunds — cancelling and refunding are two separate, deliberate
+  staff actions (see below), so clicking "Mark cancelled" never silently
+  moves money on its own.
+- **Automatic pending-expiry** (`expire_stale_pending_bookings`,
+  `app/worker.py`, run via Celery beat every 15 min): a `pending` booking
+  blocks the item's calendar exactly like a paid one, so anything still
+  unpaid `PENDING_EXPIRY_HOURS` (default 24) after creation gets
+  auto-cancelled — no refund, since nothing was ever paid.
+- **Explicit admin refund** (`POST /admin/payments/{id}/refund`): how
+  staff actually issue a refund — always a manual action taken after
+  seeing the cancellation land, never automatic. **Requires the booking to
+  already be `cancelled`** — you can't refund an in-progress rental
+  without cancelling it first; and cancelling by itself never refunds, so
+  this is always the next step for a staff-cancelled paid booking. Calls
+  the same idempotent `refund_service` as everywhere else — clicking it
+  twice for the same booking never double-refunds.
+
+Refunds go through `refund_service.py`: for a card payment, a real
+`stripe.Refund.create(...)` is attempted against the original
+PaymentIntent; if that fails or the original payment was cash/bank-transfer,
+a `refund` row is recorded `pending`/`failed` for manual follow-up on the
+admin Payments screen. Refunds are idempotent — triggering one twice for
+the same booking never double-refunds.
+
+**Visibility** — previously a refund could succeed (or fail) with nothing
+in the UI to show it either way:
+- Both the admin and customer booking-detail pages (`GET /bookings/{id}`)
+  now return a `payments` list (type/amount/method/status/date), so
+  "cancelled" isn't the only signal — you can see whether the money
+  actually moved, and whether a refund is stuck `pending`/`failed` and
+  needs manual follow-up.
+- The admin booking-detail page also returns a merged, time-ordered
+  `audit_log` — every `record_audit_log()` call was already writing to
+  `audit_logs`, but nothing ever surfaced it; this merges the booking's own
+  status-change entries with its payments' entries (recorded, refunded,
+  refund failed, etc.) into one trail on the page.
+
+The admin dashboard also live-refreshes: any booking create/status-change
+or payment/refund publishes an event over Redis pub/sub
+(`services/realtime.py`), pushed to connected admins over an authenticated
+WebSocket (`GET /ws/bookings` on `api-admin`, `routers/admin/realtime.py`).
+The Bookings list/detail and Payments ledger pages all subscribe
+(`apps/admin/lib/useBookingEvents.ts`) and just re-fetch from the real API
+on any event — so a customer cancelling, another admin's action, or the
+Stripe webhook confirming a payment shows up without a manual reload. It's
+a "go re-fetch" signal only, never a data source on its own, so a missed
+event just means a stale screen until the next one (or a manual reload) —
+never wrong data.
 
 **Booking confirmation emails** are sent for real over SMTP by the
 `worker` container (`worker.py`), not just logged — see the Docker section
@@ -243,10 +300,13 @@ With the default placeholder `STRIPE_SECRET_KEY`:
    payment and moves the booking to `confirmed` (same state-machine path
    the real Stripe webhook uses, so it shows up in
    `booking_status_history` either way).
-3. From `/account/bookings/{id}`, **Cancel booking** works at any point —
-   the page tells you upfront whether you're inside or outside the 48h
-   free-cancellation window, and the confirmation message reflects the
-   real outcome (`refunded`, `pending`, or `failed`).
+3. From `/account/bookings/{id}`, **Cancel booking** is available
+   immediately — the booking is still `pending` (unpaid) at this point, so
+   self-service cancellation is unrestricted. Once it's `confirmed` (paid),
+   the button only shows if you're more than 48h from pickup; inside that
+   window the page shows a "contact us" message instead, since only staff
+   can cancel it from there (and staff cancellations refund automatically —
+   see `POST /admin/bookings/{id}/status` in the admin app).
 
 Set a real `STRIPE_SECRET_KEY` (and `STRIPE_WEBHOOK_SECRET` for the
 `/payments/webhook` endpoint) to switch both flows over to live Stripe
