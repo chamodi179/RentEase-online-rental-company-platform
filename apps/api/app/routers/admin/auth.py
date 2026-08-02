@@ -68,14 +68,16 @@ def admin_login(payload: LoginIn, response: Response, db: Session = Depends(get_
         entity_type="staff", entity_id=user.id,
     )
     db.commit()
-    response.set_cookie("access_token", create_access_token(user.id, user.role), **COOKIE_KWARGS)
-    response.set_cookie("refresh_token", create_refresh_token(user.id, user.role), **COOKIE_KWARGS)
+    response.set_cookie(settings.ACCESS_TOKEN_COOKIE, create_access_token(user.id, user.role), **COOKIE_KWARGS)
+    response.set_cookie(settings.REFRESH_TOKEN_COOKIE, create_refresh_token(user.id, user.role), **COOKIE_KWARGS)
     return user
 
 
 @router.post("/refresh", response_model=UserOut)
 def admin_refresh(
-    response: Response, refresh_token: str | None = Cookie(default=None), db: Session = Depends(get_db)
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=settings.REFRESH_TOKEN_COOKIE),
+    db: Session = Depends(get_db),
 ):
     """See the matching public/auth.py refresh endpoint — same gap existed
     here, so staff got logged out on every access-token expiry too."""
@@ -93,14 +95,14 @@ def admin_refresh(
     if not user or not user.is_active or user.role not in ("staff", "super_admin"):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
 
-    response.set_cookie("access_token", create_access_token(user.id, user.role), **COOKIE_KWARGS)
+    response.set_cookie(settings.ACCESS_TOKEN_COOKIE, create_access_token(user.id, user.role), **COOKIE_KWARGS)
     return user
 
 
 @router.post("/logout")
 def admin_logout(response: Response):
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+    response.delete_cookie(settings.ACCESS_TOKEN_COOKIE)
+    response.delete_cookie(settings.REFRESH_TOKEN_COOKIE)
     return {"detail": "Logged out"}
 
 
