@@ -2,6 +2,7 @@ from fastapi import Cookie, Depends, HTTPException, status
 from jwt import PyJWTError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.models import User
@@ -10,7 +11,7 @@ __all__ = ["get_db", "get_current_user", "require_role"]
 
 
 def get_current_user(
-    access_token: str | None = Cookie(default=None),
+    access_token: str | None = Cookie(default=None, alias=settings.ACCESS_TOKEN_COOKIE),
     db: Session = Depends(get_db),
 ) -> User:
     if not access_token:
