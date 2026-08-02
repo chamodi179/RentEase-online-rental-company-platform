@@ -107,6 +107,7 @@ services:
       S3_SECRET_KEY: minioadmin
     depends_on:
       - minio-init
+      - redis
     ports:
       - "8001:8000"
 
@@ -143,6 +144,8 @@ services:
       S3_BUCKET: rentease
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
+    depends_on:
+      - redis
     ports:
       - "8002:8000"
 
@@ -164,6 +167,26 @@ services:
       SMTP_HOST: mailer
       SMTP_PORT: "1025"
       SMTP_FROM: "RentEase <bookings@rentease.local>"
+
+  # Separate process from `worker` — beat only enqueues tasks on a timer
+  # (expire_stale_pending_bookings, see worker.py's beat_schedule), the
+  # `worker` service above still does the actual work. Same image/env
+  # since it needs the same DB access to import app.worker's task
+  # definitions, even though this task doesn't send email.
+  beat:
+    build: ./apps/api
+    restart: unless-stopped
+    command: celery -A app.worker beat --loglevel=info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - redis
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: rentease
 
   # ---- Frontends: separate Next.js apps, each pointed at its own instance ----
   customer-web:
