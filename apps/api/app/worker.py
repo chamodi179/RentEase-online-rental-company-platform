@@ -1,15 +1,30 @@
 import smtplib
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 
 from celery import Celery
 
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.models.models import Booking
+from app.services.booking_service import PENDING_EXPIRY_HOURS, cancel_booking
 
 celery_app = Celery(
     "rentease",
     broker="redis://redis:6379/0",
     backend="redis://redis:6379/1",
 )
+
+# Only the worker needs a schedule — running this via `celery -A app.worker
+# beat` starts a separate scheduler process (see the `beat` service in
+# docker-compose.yml) that just enqueues this task on a timer; the actual
+# work still runs on `worker` like any other task.
+celery_app.conf.beat_schedule = {
+    "expire-stale-pending-bookings": {
+        "task": "expire_stale_pending_bookings",
+        "schedule": 900.0,  # every 15 minutes — good enough for a 24h window
+    },
+}
 
 
 @celery_app.task(
@@ -69,3 +84,29 @@ def send_booking_confirmation_email(
         if settings.SMTP_USER:
             smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
         smtp.send_message(message)
+
+
+@celery_app.task(name="expire_stale_pending_bookings")
+def expire_stale_pending_bookings() -> int:
+    """A "pending" booking blocks the item's calendar exactly like a paid
+    one (see availability.BLOCKING_STATUSES) — an abandoned checkout that
+    never paid would otherwise hold that slot forever. Cancels anything
+    still "pending" more than PENDING_EXPIRY_HOURS after creation, freeing
+    the item back up. actor_id=None marks these as system-initiated in the
+    audit log / booking_status_history, distinct from a customer or staff
+    cancellation. No refund logic needed: cancel_booking() already skips
+    the refund step for anything that was never "confirmed" (i.e. never
+    paid) in the first place — that's not special-cased here, just a
+    property of the shared cancel path.
+    """
+    cutoff = datetime.now() - timedelta(hours=PENDING_EXPIRY_HOURS)
+    db = SessionLocal()
+    expired = 0
+    try:
+        stale = db.query(Booking).filter(Booking.status == "pending", Booking.created_at <= cutoff).all()
+        for booking in stale:
+            cancel_booking(db, booking, actor_id=None)
+            expired += 1
+    finally:
+        db.close()
+    return expired
