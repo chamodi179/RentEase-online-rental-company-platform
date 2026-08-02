@@ -16,15 +16,15 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      mariadb:
-        image: mariadb:11
+      mysql:
+        image: mysql:8
         env:
-          MARIADB_ROOT_PASSWORD: root
-          MARIADB_DATABASE: rentease
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: rentease
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
@@ -44,7 +44,7 @@ jobs:
 
       - name: Load schema + procedures + triggers + seed data
         run: |
-          sudo apt-get update && sudo apt-get install -y mariadb-client
+          sudo apt-get update && sudo apt-get install -y mysql-client
           for f in docs/01_schema.sql docs/02_triggers.sql docs/03_procedures.sql docs/05_seed_data.sql; do
             echo "Loading $f"
             mysql -h 127.0.0.1 -P 3306 -u root -proot rentease < "$f"
