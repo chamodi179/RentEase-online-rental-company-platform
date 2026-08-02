@@ -58,12 +58,25 @@ export interface Booking {
   deposit_amount: string;
   total_amount: string;
   created_at: string;
+  updated_at: string;
+  is_refunded: boolean;
+}
+
+export interface Payment {
+  id: number;
+  booking_id: number;
+  type: "payment" | "refund";
+  amount: string;
+  method: "card" | "cash" | "bank_transfer";
+  status: "pending" | "success" | "failed";
+  created_at: string;
 }
 
 export interface BookingDetail extends Booking {
   item: ItemListing;
   branch_pickup: Branch;
   branch_dropoff: Branch;
+  payments: Payment[];
 }
 
 export interface User {
