@@ -1,11 +1,14 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_db, require_role
-from app.models.models import Booking, User
-from app.schemas.admin import AdminBookingDetailOut, AdminBookingOut, BookingStatusUpdateIn, ManualBookingCreateIn
+from app.models.models import AuditLog, Booking, Payment, User
+from app.schemas.admin import (
+    AdminBookingDetailOut, AdminBookingOut, AuditLogOut, BookingStatusUpdateIn, ManualBookingCreateIn,
+)
 from app.services.booking_service import cancel_booking, change_status, create_booking
 
 router = APIRouter(prefix="/bookings", tags=["admin-bookings"])
@@ -27,7 +30,26 @@ def list_bookings(
         query = query.filter(Booking.start_datetime >= start_from)
     if start_to:
         query = query.filter(Booking.start_datetime <= start_to)
-    return query.order_by(Booking.created_at.desc()).all()
+    bookings = query.order_by(Booking.created_at.desc()).all()
+
+    refunded_ids = set()
+    if bookings:
+        refunded_ids = {
+            row[0]
+            for row in db.query(Payment.booking_id)
+            .filter(
+                Payment.type == "refund", Payment.status == "success",
+                Payment.booking_id.in_([b.id for b in bookings]),
+            )
+            .distinct()
+        }
+
+    out = []
+    for b in bookings:
+        row = AdminBookingOut.model_validate(b)
+        row.is_refunded = b.id in refunded_ids
+        out.append(row)
+    return out
 
 
 @router.post("", response_model=AdminBookingOut, status_code=status.HTTP_201_CREATED)
@@ -51,13 +73,42 @@ def create_manual_booking(
 def booking_detail(booking_id: int, db: Session = Depends(get_db), _=Depends(staff_only)):
     booking = (
         db.query(Booking)
-        .options(joinedload(Booking.item), joinedload(Booking.branch_pickup), joinedload(Booking.branch_dropoff))
+        .options(
+            joinedload(Booking.item), joinedload(Booking.branch_pickup),
+            joinedload(Booking.branch_dropoff), joinedload(Booking.payments),
+        )
         .filter(Booking.id == booking_id)
         .first()
     )
     if not booking:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
-    return booking
+
+    # record_audit_log() writes rows for both booking status changes and
+    # payment/refund actions (change_status, refund_service,
+    # record_manual_payment) — but nothing ever surfaced them anywhere.
+    # Merge both into one time-ordered trail for this booking's page.
+    payment_ids = [p.id for p in booking.payments]
+    filters = [(AuditLog.entity_type == "booking") & (AuditLog.entity_id == booking.id)]
+    if payment_ids:
+        filters.append((AuditLog.entity_type == "payment") & (AuditLog.entity_id.in_(payment_ids)))
+    audit_rows = (
+        db.query(AuditLog, User.full_name)
+        .outerjoin(User, User.id == AuditLog.actor_id)
+        .filter(or_(*filters))
+        .order_by(AuditLog.created_at.asc())
+        .all()
+    )
+    result = AdminBookingDetailOut.model_validate(booking)
+    result.is_refunded = any(p.type == "refund" and p.status == "success" for p in booking.payments)
+    result.audit_log = [
+        AuditLogOut(
+            id=log.id, action=log.action, entity_type=log.entity_type, entity_id=log.entity_id,
+            actor_id=log.actor_id, actor_name=actor_name or ("System" if log.actor_id is None else None),
+            created_at=log.created_at,
+        )
+        for log, actor_name in audit_rows
+    ]
+    return result
 
 
 @router.post("/{booking_id}/status", response_model=AdminBookingOut)
@@ -69,8 +120,11 @@ def update_status(
     if not booking:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
     if payload.new_status == "cancelled":
-        # Same fixed policy as the customer-facing cancel (spec §4.3): the
-        # cancellation itself always goes through, cancel_booking() only
-        # decides refund eligibility from the 48h window internally.
-        return cancel_booking(db, booking, actor_id=user.id)
+        # Staff can cancel any booking, any time — but cancelling never
+        # auto-refunds for a staff-initiated cancellation (admin_initiated
+        # skips the customer time-window refund logic entirely). Refunding
+        # is a deliberate, separate action via
+        # POST /admin/payments/{id}/refund once the cancellation has
+        # landed — not a side effect of clicking "Mark cancelled".
+        return cancel_booking(db, booking, actor_id=user.id, admin_initiated=True)
     return change_status(db, booking, payload.new_status, changed_by=user.id)
