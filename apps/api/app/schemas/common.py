@@ -110,12 +110,36 @@ class BookingOut(OrmBase):
     deposit_amount: Decimal
     total_amount: Decimal
     created_at: datetime
+    # Computed by the list/detail endpoints (a correlated lookup, not an
+    # ORM column) so a cancelled-and-refunded booking can display
+    # differently from cancelled-and-not — the raw status only ever says
+    # "cancelled" either way.
+    is_refunded: bool = False
+    # Approximates "when payment happened" for the customer app's 24h
+    # cooling-off button-state hint (see booking_service.CONFIRMED_COOLING_OFF_HOURS).
+    # Not exact — bumps on any field change, not just the pending->confirmed
+    # transition — but the API enforces the real rule server-side via the
+    # booking_status_history audit trail regardless, so this is informational only.
+    updated_at: datetime
+
+
+class PaymentOut(OrmBase):
+    id: int
+    booking_id: int
+    type: str
+    amount: Decimal
+    method: str
+    status: str
+    created_at: datetime
 
 
 class BookingDetailOut(BookingOut):
     item: ItemListOut
     branch_pickup: BranchOut
     branch_dropoff: BranchOut
+    # So a customer can actually see a refund landed (not just that the
+    # booking says "cancelled") without a separate request.
+    payments: list[PaymentOut] = []
 
 
 # ---- file uploads (used for item-catalog photos — see admin/items.py) ----
