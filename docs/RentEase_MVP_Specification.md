@@ -80,13 +80,42 @@ This is a genuine scope change, not an oversight — flagging it here so it isn'
 
 ### 4.3 Customer Account Area
 
-- My Bookings: list with status; booking detail (dates, amount, status).
-- **Cancel is available for `pending`/`confirmed` bookings and always succeeds** — cancellation and refund eligibility are enforced as separate concerns, exactly as originally specified:
-  - ≥48 hours before pickup (`start_datetime`) → full refund.
-  - <48 hours before pickup → booking still cancels, no refund.
-  - This window is a code constant (`CANCELLATION_WINDOW_HOURS = 48` in `booking_service.py`), not yet an admin-configurable setting.
-- Refund execution (`refund_service.py`): for a card payment, a real `stripe.Refund.create(...)` is attempted against the original PaymentIntent; if that fails or the original payment was cash/bank-transfer, a `refund` row is recorded as `pending`/`failed` for manual follow-up on the admin Payments screen. Refunds are idempotent — cancelling twice never double-refunds.
-- **Correction vs. the repo's own README:** staff-initiated cancellations from the admin dashboard go through the exact same `cancel_booking()` function and the same 48-hour policy as customer cancellations — there is no separate, policy-free staff cancellation path in the code, regardless of what any prior documentation said.
+- My Bookings: list with status; booking detail (dates, amount, status, payment/refund history).
+- **Customer self-service cancel** (`POST /bookings/{id}/cancel`) is gated, not
+  unconditional:
+  - `pending` (unpaid) → always allowed, nothing to refund.
+  - `confirmed` (paid) → allowed if **either** window is open: **≥48 hours before
+    pickup** (`start_datetime`), or **within 24 hours of payment** — a
+    no-questions-asked cooling-off period regardless of how close pickup is.
+    Outside both, the endpoint returns 400 and the booking page instead points
+    the customer at support, since only staff can cancel it from there.
+  - Because eligibility gates the action itself, a successful customer cancellation
+    always refunds — there's no "cancels but forfeits" case on the customer side.
+  - Both windows are code constants (`CANCELLATION_WINDOW_HOURS = 48`,
+    `CONFIRMED_COOLING_OFF_HOURS = 24`, in `booking_service.py`), not yet
+    admin-configurable settings.
+- **Automatic pending-expiry**: a `pending` booking blocks the item's calendar the
+  same as a paid one (§7.1), so anything still unpaid more than
+  `PENDING_EXPIRY_HOURS` (default 24) after creation is auto-cancelled by a Celery
+  beat job (`expire_stale_pending_bookings`, every 15 min) — no refund, since
+  nothing was paid.
+- **Staff cancel** (`POST /admin/bookings/{id}/status`, `new_status: "cancelled"`):
+  can cancel **any** booking, any time from creation up to pickup (`pending` or
+  `confirmed`) — neither customer window applies to staff. Unlike a customer's own
+  cancellation, this **never** auto-refunds — refunding is always a separate,
+  deliberate action (below), so "Mark cancelled" never silently moves money on its
+  own. See §5.3.
+- **Explicit admin refund** (`POST /admin/payments/{id}/refund`): how staff
+  actually issue a refund — a manual action, always taken after the cancellation
+  has landed, never automatic. **Requires the booking to already be `cancelled`**
+  — refunding an in-progress rental without cancelling it first isn't allowed, and
+  since cancelling by itself never refunds, this is always the next step for a
+  staff-cancelled paid booking. See §5.5.
+- **Payment/refund visibility**: both the customer and admin booking-detail
+  endpoints now return the booking's `payments` (type/amount/method/status/date),
+  so "cancelled" isn't the only signal on screen — whether the refund actually
+  landed, or is stuck `pending`/`failed`, is visible without a separate request.
+- Refund execution (`refund_service.py`): for a card payment, a real `stripe.Refund.create(...)` is attempted against the original PaymentIntent; if that fails or the original payment was cash/bank-transfer, a `refund` row is recorded as `pending`/`failed` for manual follow-up on the admin Payments screen. Refunds are idempotent — cancelling (or refunding) twice never double-refunds.
 
 > **Deferred (not MVP):** Downloadable invoices, handover/return photos, saved payment methods, support chat, notification preferences, loyalty codes.
 
@@ -117,8 +146,11 @@ Two-level model, as originally designed:
 
 - `GET /admin/bookings` with `status_filter`, `start_from`/`start_to` filters.
 - `POST /admin/bookings` — manual booking creation for phone/walk-in customers, going through the same availability-lock logic as the public flow (no separate, weaker code path).
-- `GET /admin/bookings/{id}` — full detail.
-- `POST /admin/bookings/{id}/status` — status transitions enforced by the same state machine as the customer side (`pending → confirmed → active → completed`, or `→ cancelled` from `pending`/`confirmed`/`active`); a `cancelled` target routes through the same refund-eligibility logic as §4.3.
+- `GET /admin/bookings/{id}` — full detail, including `payments` and a merged,
+  time-ordered `audit_log` (booking status changes + this booking's payments'
+  actions, from `audit_logs` — previously written on every action but never
+  surfaced anywhere).
+- `POST /admin/bookings/{id}/status` — status transitions enforced by the same state machine as the customer side (`pending → confirmed → active → completed`, or `→ cancelled` from `pending`/`confirmed`/`active`). A `cancelled` target from staff never auto-refunds, regardless of the booking's payment state or how close to pickup it is — see §4.3 for why, and §5.5 for the explicit refund endpoint staff use as the actual next step.
 
 > **Deferred:** Full drag-to-reschedule calendar, handover/return checklists with photos, damage flagging, late-fee automation.
 
@@ -134,6 +166,8 @@ Two-level model, as originally designed:
 
 - `GET /admin/payments` — full transaction ledger, viewable by Staff and Super Admin.
 - `POST /admin/payments` — manual payment/refund recording (cash/bank transfer), **Super Admin only**, enforced both in the UI and independently in the API (see §3).
+- `POST /admin/payments/{booking_id}/refund` — explicit Stripe-backed refund, independent of cancellation (Staff and Super Admin). See §4.3 for when this is the right tool vs. letting a cancellation trigger the refund automatically.
+- **Live-refresh:** booking creation/status-changes and payment/refund actions publish an event over Redis pub/sub, pushed to connected admins via an authenticated WebSocket (`GET /ws/bookings` on `api-admin`). The bookings list, booking detail, and payments ledger pages all re-fetch from the API on any event — no manual reload needed to see another admin's, a customer's, or a webhook's change land. This is a UX nicety only; every page still loads its real data from the DB on its own, so a missed/delayed event never shows incorrect data, just a stale screen until the next event or a manual reload.
 
 > **Deferred:** Refund workflow automation beyond what §4.3 already does, invoice PDF generation, exportable reports.
 
