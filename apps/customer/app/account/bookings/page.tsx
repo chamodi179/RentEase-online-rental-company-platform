@@ -11,7 +11,16 @@ const STATUS_STYLE: Record<string, string> = {
   active: "bg-available/10 text-available",
   completed: "bg-ink-soft/10 text-ink-soft",
   cancelled: "bg-danger/10 text-danger",
+  refunded: "bg-ink-soft/10 text-ink-soft",
 };
+
+// b.status only ever says "cancelled" — is_refunded (computed server-side)
+// is what actually tells you whether the money came back. Grouping
+// (groupOf, below) intentionally still buckets these under "cancelled" —
+// only the badge text/color changes.
+function displayStatus(b: Booking): string {
+  return b.status === "cancelled" && b.is_refunded ? "refunded" : b.status;
+}
 
 // Spec §4.3: "My Bookings: upcoming, active, past, cancelled". Bookings
 // don't carry a "group" field directly — it's derived from status (and, for
@@ -99,7 +108,7 @@ export default function MyBookingsPage() {
                 <p className="text-sm text-ink-soft">{new Date(b.start_datetime).toLocaleDateString()} → {new Date(b.end_datetime).toLocaleDateString()}</p>
               </div>
               <div className="flex items-center gap-4">
-                <span className={`rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLE[b.status]}`}>{b.status}</span>
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLE[displayStatus(b)]}`}>{displayStatus(b)}</span>
                 <span className="font-medium text-ink">${b.total_amount}</span>
               </div>
             </Link>
