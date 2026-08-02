@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.deps import get_db, require_role
+from app.core.deps import get_current_user, get_db, require_role
 from app.models.models import Booking, Payment, User
 from app.schemas.common import BookingOut, CheckoutSessionOut
 from app.services.audit_service import record_audit_log
@@ -93,12 +93,19 @@ def create_checkout_session(booking_id: int, db: Session = Depends(get_db), user
 
 @router.get("/checkout/{booking_id}/sync", response_model=BookingOut)
 def sync_checkout_session(
-    booking_id: int, session_id: str, db: Session = Depends(get_db), user: User = Depends(customer_only)
+    booking_id: int, session_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
     """Called from the success-page redirect so the customer sees 'confirmed'
     immediately, without waiting on the webhook to land. The webhook (below)
     remains the durable source of truth — this is a best-effort UX shortcut,
-    server-verified against Stripe directly rather than trusting query params."""
+    server-verified against Stripe directly rather than trusting query params.
+
+    Deliberately only requires *any* authenticated user, not role="customer":
+    ownership is already enforced below via booking.customer_id, so the role
+    check added nothing but a footgun — any session that wasn't literally a
+    customer (e.g. staff testing checkout, or a session cookie clobbered by
+    a same-machine admin login) got a bare 403 here and the booking was
+    stuck "pending" forever with no path to recover on this screen."""
     booking = db.get(Booking, booking_id)
     if not booking or booking.customer_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
