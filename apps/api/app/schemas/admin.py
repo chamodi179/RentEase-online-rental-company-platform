@@ -4,7 +4,9 @@ from decimal import Decimal
 from pydantic import BaseModel, EmailStr, field_validator
 
 from app.core.security import validate_password_strength
-from app.schemas.common import BookingDetailOut, CategoryOut, ItemPhotoOut, OrmBase, PresignOut, PresignRequest, UserOut
+from app.schemas.common import (
+    BookingDetailOut, CategoryOut, ItemPhotoOut, OrmBase, PresignRequest, UserOut,
+)
 
 
 class DashboardSummaryOut(BaseModel):
@@ -75,10 +77,33 @@ class AdminBookingOut(OrmBase):
     end_datetime: datetime
     total_amount: Decimal
     created_at: datetime
+    # Computed in the list endpoint (a correlated lookup, not an ORM
+    # attribute — Booking has no such column) so the list view can show
+    # "refunded" instead of a bare "cancelled" without a second request
+    # per row. See AdminBookingDetailOut.payments for the full picture.
+    is_refunded: bool = False
+
+
+class AuditLogOut(BaseModel):
+    id: int
+    action: str
+    entity_type: str
+    entity_id: int
+    actor_id: int | None
+    actor_name: str | None  # None + actor_id=None means a system action (e.g. the pending-expiry job)
+    created_at: datetime
 
 
 class AdminBookingDetailOut(BookingDetailOut):
     customer_id: int
+    # BookingDetailOut already carries `payments` (see common.py) — every
+    # customer-visible field the admin view needs is inherited, this adds
+    # what's admin-only: who's booking it, and the audit trail (status
+    # changes + payment/refund actions) for this booking and its payments,
+    # merged and time-ordered — previously nothing surfaced this at all,
+    # so there was no way to confirm from the UI that a cancel/refund
+    # action had actually been recorded.
+    audit_log: list[AuditLogOut] = []
 
 
 class BookingStatusUpdateIn(BaseModel):
@@ -100,16 +125,6 @@ class ManualPaymentIn(BaseModel):
     amount: Decimal
     method: str  # card | cash | bank_transfer
     gateway_reference: str | None = None
-
-
-class PaymentOut(OrmBase):
-    id: int
-    booking_id: int
-    type: str
-    amount: Decimal
-    method: str
-    status: str
-    created_at: datetime
 
 
 class StaffCreateIn(BaseModel):
