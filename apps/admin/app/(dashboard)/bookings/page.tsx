@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { AdminBooking } from "@/lib/types";
+import { useBookingEvents } from "@/lib/useBookingEvents";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "bg-warn/10 text-warn",
@@ -11,7 +12,15 @@ const STATUS_STYLE: Record<string, string> = {
   active: "bg-action/10 text-action",
   completed: "bg-graphite-soft/10 text-graphite-soft",
   cancelled: "bg-danger/10 text-danger",
+  refunded: "bg-graphite-soft/10 text-graphite-soft",
 };
+
+// Same distinction as the detail page: booking.status only ever says
+// "cancelled" — is_refunded (computed server-side in list_bookings) is
+// what actually tells you whether the money came back.
+function displayStatus(b: AdminBooking): string {
+  return b.status === "cancelled" && b.is_refunded ? "refunded" : b.status;
+}
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
@@ -29,6 +38,13 @@ export default function BookingsPage() {
   }
 
   useEffect(load, [statusFilter]);
+
+  // Any booking being created or changing status (by this admin, another
+  // admin, a customer, or the Stripe webhook) should show up here without
+  // a manual reload. Simplest correct approach: any event just re-runs the
+  // same load() the page already does on mount/filter-change — no separate
+  // patch-in-place logic to keep in sync with the filter/sort/pagination.
+  useBookingEvents(() => load());
 
   async function createManualBooking(e: React.FormEvent) {
     e.preventDefault();
@@ -103,7 +119,7 @@ export default function BookingsPage() {
                 <td className="td font-medium">
                   <Link href={`/bookings/${b.id}`} className="text-action hover:underline">{b.booking_reference}</Link>
                 </td>
-                <td className="td"><span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[b.status]}`}>{b.status}</span></td>
+                <td className="td"><span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[displayStatus(b)]}`}>{displayStatus(b)}</span></td>
                 <td className="td">{new Date(b.start_datetime).toLocaleString()}</td>
                 <td className="td">{new Date(b.end_datetime).toLocaleString()}</td>
                 <td className="td">${b.total_amount}</td>
