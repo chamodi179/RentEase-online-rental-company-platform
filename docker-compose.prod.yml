@@ -1,0 +1,191 @@
+version: "3.9"
+
+# Production variant of docker-compose.yml at the repo root.
+#
+# Differences from the dev compose file:
+#   - `build:` is replaced with `image:` pointing at GHCR — CD
+#     (.github/workflows/cd.yml) pushes api/admin/customer images there
+#     and this file just pulls + runs them, it never builds on the host.
+#   - IMAGE_TAG/REGISTRY/IMAGE_NAMESPACE are supplied as env vars by the
+#     deploy step over SSH (see cd.yml), not hardcoded here, so the same
+#     file works for every deploy and for rollback-on-failure.
+#   - MySQL is still assumed to be running on the host already (see the
+#     NOTE in docker-compose.yml) — this only changes how the app images
+#     are sourced, not the data layer.
+#   - Secrets (JWT_SECRET, STRIPE_*, DB_PASSWORD, etc.) come from a `.env`
+#     file on the production host (git-ignored, deployed out-of-band —
+#     see docs/RentEase_Architecture.md and the deployment notes in
+#     README.md), never committed here.
+
+services:
+  redis:
+    image: redis:7
+    restart: unless-stopped
+
+  mailer:
+    image: maildev/maildev
+    restart: unless-stopped
+    ports:
+      - "1080:1080"
+      - "1025:1025"
+
+  db-backup:
+    image: mysql:8
+    restart: unless-stopped
+    entrypoint: ["sh", "/backup.sh"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: rentease
+      RETENTION_DAYS: "7"
+      BACKUP_HOUR: "2"
+    volumes:
+      - ./backups/backup.sh:/backup.sh:ro
+      - db_backups:/backups
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${FRONTEND_ORIGIN}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${S3_ACCESS_KEY} ${S3_SECRET_KEY}; do sleep 1; done;
+      mc mb --ignore-existing local/rentease;
+      mc anonymous set download local/rentease/item-photos;
+      "
+
+  api-public:
+    image: ${REGISTRY}/${IMAGE_NAMESPACE}/api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      APP_MODE: public
+      DB_HOST: host.docker.internal
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: rentease
+      DB_POOL_SIZE: "20"
+      JWT_SECRET: ${JWT_SECRET}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
+      COOKIE_SECURE: "true"
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+      S3_BUCKET: rentease
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    depends_on:
+      - minio-init
+      - redis
+    ports:
+      - "8001:8000"
+
+  api-admin:
+    image: ${REGISTRY}/${IMAGE_NAMESPACE}/api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      APP_MODE: admin
+      DB_HOST: host.docker.internal
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: rentease
+      DB_POOL_SIZE: "10"
+      JWT_SECRET: ${JWT_SECRET}
+      FRONTEND_ORIGIN: ${ADMIN_FRONTEND_ORIGIN}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
+      COOKIE_SECURE: "true"
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+      S3_BUCKET: rentease
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    depends_on:
+      - redis
+    ports:
+      - "8002:8000"
+
+  worker:
+    image: ${REGISTRY}/${IMAGE_NAMESPACE}/api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: celery -A app.worker worker --loglevel=info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - redis
+      - mailer
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: rentease
+      SMTP_HOST: ${SMTP_HOST:-mailer}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-RentEase <bookings@rentease.local>}
+
+  beat:
+    image: ${REGISTRY}/${IMAGE_NAMESPACE}/api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: celery -A app.worker beat --loglevel=info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - redis
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: rentease
+
+  customer-web:
+    image: ${REGISTRY}/${IMAGE_NAMESPACE}/customer:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api-public
+    environment:
+      NEXT_PUBLIC_API_URL: ${CUSTOMER_API_PUBLIC_URL}
+      API_URL_INTERNAL: http://api-public:8000/api/v1
+    ports:
+      - "3000:3000"
+
+  admin-web:
+    image: ${REGISTRY}/${IMAGE_NAMESPACE}/admin:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api-admin
+    environment:
+      NEXT_PUBLIC_ADMIN_API_URL: ${ADMIN_API_PUBLIC_URL}
+      ADMIN_API_URL_INTERNAL: http://api-admin:8000/api/v1
+    ports:
+      - "3001:3001"
+
+volumes:
+  minio_data:
+  db_backups:
