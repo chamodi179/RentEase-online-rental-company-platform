@@ -86,7 +86,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       - name: Scan image (Trivy) — informational
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service }}:${{ needs.gate.outputs.sha }}
           exit-code: "0"
