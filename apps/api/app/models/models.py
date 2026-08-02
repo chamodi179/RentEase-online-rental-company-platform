@@ -128,6 +128,7 @@ class Booking(Base):
     customer = relationship("User", foreign_keys=[customer_id])
     branch_pickup = relationship("Branch", foreign_keys=[branch_pickup_id])
     branch_dropoff = relationship("Branch", foreign_keys=[branch_dropoff_id])
+    payments = relationship("Payment", back_populates="booking", order_by="Payment.created_at")
 
 
 class BookingStatusHistory(Base):
@@ -152,7 +153,7 @@ class Payment(Base):
                      nullable=False, default="pending")
     created_at = Column(DateTime, server_default=func.now())
 
-    booking = relationship("Booking")
+    booking = relationship("Booking", back_populates="payments")
 
 
 class AuditLog(Base):
