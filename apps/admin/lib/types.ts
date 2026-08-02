@@ -55,6 +55,17 @@ export interface AdminBooking {
   end_datetime: string;
   total_amount: string;
   created_at: string;
+  is_refunded: boolean;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  action: string;
+  entity_type: string;
+  entity_id: number;
+  actor_id: number | null;
+  actor_name: string | null;
+  created_at: string;
 }
 
 export interface BookingDetail extends AdminBooking {
@@ -64,6 +75,8 @@ export interface BookingDetail extends AdminBooking {
   item: { id: number; name: string };
   branch_pickup: { id: number; name: string; city: string };
   branch_dropoff: { id: number; name: string; city: string };
+  payments: Payment[];
+  audit_log: AuditLogEntry[];
 }
 
 export interface Customer extends User {
