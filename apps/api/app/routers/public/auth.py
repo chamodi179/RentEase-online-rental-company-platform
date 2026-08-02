@@ -82,8 +82,8 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
         entity_type="customer", entity_id=user.id,
     )
     db.commit()
-    response.set_cookie("access_token", create_access_token(user.id, user.role), **COOKIE_KWARGS)
-    response.set_cookie("refresh_token", create_refresh_token(user.id, user.role), **COOKIE_KWARGS)
+    response.set_cookie(settings.ACCESS_TOKEN_COOKIE, create_access_token(user.id, user.role), **COOKIE_KWARGS)
+    response.set_cookie(settings.REFRESH_TOKEN_COOKIE, create_refresh_token(user.id, user.role), **COOKIE_KWARGS)
     return user
 
 
@@ -96,7 +96,9 @@ def _as_aware(dt: datetime) -> datetime:
 
 @router.post("/refresh", response_model=UserOut)
 def refresh(
-    response: Response, refresh_token: str | None = Cookie(default=None), db: Session = Depends(get_db)
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=settings.REFRESH_TOKEN_COOKIE),
+    db: Session = Depends(get_db),
 ):
     """Mints a new access_token from the refresh_token cookie. This was
     missing entirely — login set a refresh_token cookie but nothing ever
@@ -116,14 +118,14 @@ def refresh(
     if not user or not user.is_active or user.role != "customer":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
 
-    response.set_cookie("access_token", create_access_token(user.id, user.role), **COOKIE_KWARGS)
+    response.set_cookie(settings.ACCESS_TOKEN_COOKIE, create_access_token(user.id, user.role), **COOKIE_KWARGS)
     return user
 
 
 @router.post("/logout")
 def logout(response: Response):
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+    response.delete_cookie(settings.ACCESS_TOKEN_COOKIE)
+    response.delete_cookie(settings.REFRESH_TOKEN_COOKIE)
     return {"detail": "Logged out"}
 
 
