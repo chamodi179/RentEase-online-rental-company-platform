@@ -66,16 +66,17 @@ class Settings(BaseSettings):
 
     # Used server-side (container-to-container) for anything the API itself
     # needs to reach MinIO over, e.g. bucket setup.
-    S3_ENDPOINT: str = "http://minio:9000"
-    # Used only to SIGN presigned URLs. Must be the host the *browser* will
-    # actually call, since the Host header is part of the SigV4 signature —
-    # signing against "minio:9000" (container-only DNS) produces a URL the
-    # browser can never resolve. No network call happens at signing time, so
-    # this doesn't need to be reachable from inside the API container itself.
-    S3_PUBLIC_ENDPOINT: str = "http://localhost:9000"
+    # Region the bucket actually lives in — SigV4 signing fails with
+    # SignatureDoesNotMatch if this doesn't match the bucket's real region.
+    AWS_REGION: str = "eu-north-1"
+    # Real S3 regional endpoint (not MinIO). Same value used server-side and
+    # for signing since S3 endpoints are publicly resolvable either way —
+    # unlike MinIO there's no container-only-DNS vs browser-facing split.
+    S3_ENDPOINT: str = "https://s3.eu-north-1.amazonaws.com"
+    S3_PUBLIC_ENDPOINT: str = "https://s3.eu-north-1.amazonaws.com"
     S3_BUCKET: str = "rentease"
-    S3_ACCESS_KEY: str = "minioadmin"
-    S3_SECRET_KEY: str = "minioadmin"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
 
     TAX_RATE: float = 0.0  # MVP hardcodes a single tax rate per spec §5.7
 

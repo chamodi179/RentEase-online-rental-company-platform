@@ -5,15 +5,17 @@ from app.core.config import settings
 
 
 def get_presigning_client():
-    """Client used only to SIGN URLs — endpoint must be the browser-facing
-    host (see S3_PUBLIC_ENDPOINT comment in config.py)."""
+    """Client used only to SIGN URLs. region_name must match the bucket's
+    actual AWS region or SigV4 signing fails. addressing_style="path" keeps
+    generated URLs as f"{endpoint}/{bucket}/{key}" (same shape MinIO used),
+    so key_from_file_url() below doesn't need to change."""
     return boto3.client(
         "s3",
         endpoint_url=settings.S3_PUBLIC_ENDPOINT,
         aws_access_key_id=settings.S3_ACCESS_KEY,
         aws_secret_access_key=settings.S3_SECRET_KEY,
-        config=BotoConfig(signature_version="s3v4"),
-        region_name="us-east-1",
+        config=BotoConfig(signature_version="s3v4", s3={"addressing_style": "path"}),
+        region_name=settings.AWS_REGION,
     )
 
 

@@ -45,38 +45,10 @@ services:
       - ./backups/backup.sh:/backup.sh:ro
       - db_backups:/backups
 
-  minio:
-    image: minio/minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-      # Lets the browser (localhost:3000) PUT directly to MinIO's presigned
-      # URLs — without this, the upload XHR fails as a CORS error.
-      MINIO_API_CORS_ALLOW_ORIGIN: "*"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
-
-  # One-shot init: creates the "rentease" bucket if it doesn't exist yet,
-  # then exits. Presigned PUTs 403 until this bucket exists.
-  # The bucket itself stays private (KYC documents live here too), but
-  # item-photos/* is opened up for anonymous read — catalog photos are
-  # public-facing product images, not sensitive documents, so there's no
-  # reason to pay for presigned-GET signing/expiry on every catalog view.
-  minio-init:
-    image: minio/mc
-    depends_on:
-      - minio
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done;
-      mc mb --ignore-existing local/rentease;
-      mc anonymous set download local/rentease/item-photos;
-      "
+  # MinIO/minio-init removed — bucket now lives on real AWS S3. The bucket,
+  # public-read policy on item-photos/*, and CORS rule that minio-init used
+  # to set up automatically must be configured once via AWS CLI/console
+  # instead (see chat for the exact commands).
 
   # ---- Backend: same image, two isolated running instances ----
   # (architecture doc: one codebase, two processes, two failure domains —
@@ -100,13 +72,13 @@ services:
       COOKIE_SECURE: "false"
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
-      S3_ENDPOINT: http://minio:9000
-      S3_PUBLIC_ENDPOINT: http://localhost:9000
-      S3_BUCKET: rentease
-      S3_ACCESS_KEY: minioadmin
-      S3_SECRET_KEY: minioadmin
+      AWS_REGION: ${AWS_REGION}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_PUBLIC_ENDPOINT: ${S3_ENDPOINT}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
     depends_on:
-      - minio-init
       - redis
     ports:
       - "8001:8000"
@@ -139,11 +111,12 @@ services:
       # Previously unset here — it only worked because these happen to match
       # config.py's defaults; explicit now so a MinIO credential rotation
       # doesn't silently break this instance while api-public keeps working.
-      S3_ENDPOINT: http://minio:9000
-      S3_PUBLIC_ENDPOINT: http://localhost:9000
-      S3_BUCKET: rentease
-      S3_ACCESS_KEY: minioadmin
-      S3_SECRET_KEY: minioadmin
+      AWS_REGION: ${AWS_REGION}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_PUBLIC_ENDPOINT: ${S3_ENDPOINT}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
     depends_on:
       - redis
     ports:
@@ -222,5 +195,4 @@ services:
       - "3001:3001"
 
 volumes:
-  minio_data:
   db_backups:
