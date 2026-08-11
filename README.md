@@ -1,5 +1,7 @@
 # RentEase — Implementation
 
+> **Last updated 2026-08-02** — corrected the Payments section and the local-dev walkthrough: there is no mock-checkout page/endpoint in the code, and staff cancellations never auto-refund.
+
 Full implementation of the architecture in
 [`docs/RentEase_Architecture.md`](docs/RentEase_Architecture.md): one
 FastAPI codebase deployed as two isolated instances (`api-public`,
@@ -173,16 +175,19 @@ resets the counter. If you're upgrading an existing database rather than
 starting from a fresh `01_schema.sql`, run `docs/06_migration_2026_07.sql`
 first to add the required columns.
 
-**Payments** — real Stripe Checkout integration (`payments.py`): if
-`STRIPE_SECRET_KEY` in `.env` is a real key, `/payments/checkout/{id}`
-creates an actual `stripe.checkout.Session` and the customer is redirected
-to real Stripe. Locally, `.env.example` ships with a placeholder key, so
-the same endpoint instead returns a link to an in-app **mock checkout page**
-(`/mock-checkout/[sessionId]` in the customer app) that simulates a
-successful card payment — this is how you pay for a booking end-to-end
-without needing a Stripe account. Swap in a real key and the mock path is
-never used; nothing else changes. Checkout no longer includes an ID/document
-upload step — it's just review → pay.
+**Payments** — real Stripe Checkout integration (`payments.py`):
+`/payments/checkout/{id}` always creates an actual `stripe.checkout.Session`
+and redirects the customer to real Stripe — there is currently **no local
+mock-checkout fallback in the code**. If `STRIPE_SECRET_KEY` in `.env` is
+still the placeholder from `.env.example`, the call to Stripe fails and the
+endpoint returns a `502` with a readable error rather than silently
+succeeding; the booking stays `pending` (so the reserved slot isn't lost)
+and can be retried once a real key is set. To pay for a booking end-to-end
+locally without a live Stripe account, use a
+[Stripe test-mode secret key](https://docs.stripe.com/keys) and Stripe's
+[test card numbers](https://docs.stripe.com/testing) — there's no in-app
+mock page. Checkout no longer includes an ID/document upload step — it's
+just review → pay.
 
 **Manual payments** — recording a manual (cash/bank-transfer) payment or
 refund from the admin Payments screen (`POST /admin/payments`) is
@@ -291,22 +296,28 @@ same presigned-MinIO-URL pattern.
 
 ## Paying for and cancelling a booking (local dev)
 
-With the default placeholder `STRIPE_SECRET_KEY`:
+There's no mock/offline payment path (see **Payments** above) — use a
+[Stripe test-mode secret key](https://docs.stripe.com/keys) in `.env` and
+one of Stripe's [test card numbers](https://docs.stripe.com/testing) (e.g.
+`4242 4242 4242 4242`, any future expiry, any CVC):
 
 1. Book an item as a customer through the normal checkout flow — you'll be
-   redirected to `/mock-checkout/...` instead of real Stripe.
-2. Click **Simulate successful payment**. This hits
-   `/payments/mock-complete/{booking_id}`, which records a successful
-   payment and moves the booking to `confirmed` (same state-machine path
-   the real Stripe webhook uses, so it shows up in
-   `booking_status_history` either way).
+   redirected to real Stripe Checkout.
+2. Pay with a Stripe test card. Stripe redirects back to
+   `/checkout/success`, which calls `GET /payments/checkout/{id}/sync` to
+   confirm immediately (the webhook confirms independently and idempotently
+   too — whichever lands first wins; see **Payments** above).
 3. From `/account/bookings/{id}`, **Cancel booking** is available
    immediately — the booking is still `pending` (unpaid) at this point, so
-   self-service cancellation is unrestricted. Once it's `confirmed` (paid),
-   the button only shows if you're more than 48h from pickup; inside that
-   window the page shows a "contact us" message instead, since only staff
-   can cancel it from there (and staff cancellations refund automatically —
-   see `POST /admin/bookings/{id}/status` in the admin app).
+   self-service cancellation is unrestricted and there's nothing to refund.
+   Once it's `confirmed` (paid), the button only shows if you're more than
+   48h from pickup or within 24h of payment (the cooling-off window); inside
+   neither window the page shows a "contact us" message instead, since only
+   staff can cancel it from there. **Staff cancellation never auto-refunds**
+   — a staff member cancelling a paid booking (`POST
+   /admin/bookings/{id}/status`) still requires the separate, deliberate
+   `POST /admin/payments/{id}/refund` action to actually return the money;
+   see **Cancellations & refunds** above.
 
 Set a real `STRIPE_SECRET_KEY` (and `STRIPE_WEBHOOK_SECRET` for the
 `/payments/webhook` endpoint) to switch both flows over to live Stripe
