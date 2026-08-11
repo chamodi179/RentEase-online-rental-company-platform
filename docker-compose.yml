@@ -1,10 +1,10 @@
 version: "3.9"
 
-# NOTE: MySQL is NOT defined here — it's already running on your host
-# machine (localhost:3306, user=root, password=root, db=rentease, per your
-# screenshot) with the schema already loaded. Containers reach it via
-# host.docker.internal (mapped explicitly below for Linux compatibility;
-# Docker Desktop on Mac/Windows supports this out of the box).
+# NOTE: MySQL is NOT defined here — DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/
+# DB_NAME are read from the root .env file (gitignored) and point at the
+# remote RDS instance. The old host.docker.internal extra_hosts entries
+# below are now unused but harmless — safe to remove once you've confirmed
+# everything connects to RDS.
 
 services:
   redis:
@@ -34,11 +34,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      DB_HOST: host.docker.internal
-      DB_PORT: "3306"
-      DB_USER: root
-      DB_PASSWORD: root
-      DB_NAME: rentease
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-rentease}
       RETENTION_DAYS: "7"
       BACKUP_HOUR: "2" # 2am container-local time
     volumes:
@@ -88,11 +88,11 @@ services:
       - "host.docker.internal:host-gateway"  # lets the container reach your host's MySQL
     environment:
       APP_MODE: public
-      DB_HOST: host.docker.internal
-      DB_PORT: "3306"
-      DB_USER: root
-      DB_PASSWORD: root
-      DB_NAME: rentease
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-rentease}
       DB_POOL_SIZE: "20"
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       FRONTEND_ORIGIN: http://localhost:3000
@@ -118,11 +118,11 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       APP_MODE: admin
-      DB_HOST: host.docker.internal
-      DB_PORT: "3306"
-      DB_USER: root
-      DB_PASSWORD: root
-      DB_NAME: rentease
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-rentease}
       DB_POOL_SIZE: "10"
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       FRONTEND_ORIGIN: http://localhost:3001
@@ -159,11 +159,11 @@ services:
       - redis
       - mailer
     environment:
-      DB_HOST: host.docker.internal
-      DB_PORT: "3306"
-      DB_USER: root
-      DB_PASSWORD: root
-      DB_NAME: rentease
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-rentease}
       SMTP_HOST: mailer
       SMTP_PORT: "1025"
       SMTP_FROM: "RentEase <bookings@rentease.local>"
@@ -182,11 +182,11 @@ services:
     depends_on:
       - redis
     environment:
-      DB_HOST: host.docker.internal
-      DB_PORT: "3306"
-      DB_USER: root
-      DB_PASSWORD: root
-      DB_NAME: rentease
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-rentease}
 
   # ---- Frontends: separate Next.js apps, each pointed at its own instance ----
   customer-web:
