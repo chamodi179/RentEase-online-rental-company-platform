@@ -1,5 +1,7 @@
 # RentEase — MVP Specification (v2, as-built)
 
+> **Last updated 2026-08-02** — corrects §8 (Celery beat now exists) and reconciles the mock-checkout note in §4.2.2 with README.md.
+
 *This is a revision of the original MVP specification, updated to match the system that is actually implemented in the repository as of this build, not the one that was planned before coding started. Where the build diverged from the original plan — one feature removed, several security/ops details added that weren't originally specified — those changes are called out explicitly with a short "why" rather than silently edited in, so the history isn't lost. Everything still marked "Deferred" below genuinely isn't built yet.*
 
 ---
@@ -250,10 +252,10 @@ Unchanged logic, now confirmed as actually implemented this way: `create_booking
 
 - **Backend:** FastAPI + MySQL 8/MariaDB, deployed as **two isolated instances** from one codebase — `api-public` and `api-admin`, switched via `APP_MODE` env var, each mounting only its own route set. (This two-instance split is a build decision beyond what v1 specified, made for defense-in-depth: a bug or compromise in the public-facing instance can't reach admin routes even in-process.)
 - **Frontend:** two separate Next.js apps — `apps/customer` (port 3000) and `apps/admin` (port 3001) — each with its own `package.json`, not a shared monorepo tooling setup.
-- **Background jobs:** Celery + Redis, one worker, no beat scheduler — sends booking confirmation emails over real SMTP (MailDev in dev, swappable for SES/SendGrid in production via env vars only).
+- **Background jobs:** Celery + Redis, **worker + beat** — the worker sends booking confirmation emails over real SMTP (MailDev in dev, swappable for SES/SendGrid in production via env vars only); a separate `beat` scheduler container enqueues the `expire_stale_pending_bookings` job every 15 minutes (§4.3). `beat` only schedules — it never runs application code itself, so it can restart without risk of a job running twice.
 - **File storage:** MinIO, presigned-URL pattern, used for item catalog photos.
 - **Payments:** Stripe (Checkout Session + webhook), see §4.2.2 for the current gap around local/no-key testing.
-- **Hosting:** single Docker Compose stack — `redis`, `mailer`, `db-backup`, `minio` + `minio-init`, `api-public`, `api-admin`, `worker`, `customer-web`, `admin-web`. Database itself is **not** containerized — both API instances connect to an existing MySQL install on the host via `host.docker.internal`, which is a deliberate MVP simplification but worth revisiting before any real deployment (a host-only DB doesn't survive the VM being rebuilt).
+- **Hosting:** single Docker Compose stack — `redis`, `mailer`, `db-backup`, `minio` + `minio-init`, `api-public`, `api-admin`, `worker`, `beat`, `customer-web`, `admin-web`. Database itself is **not** containerized — both API instances connect to an existing MySQL install on the host via `host.docker.internal`, which is a deliberate MVP simplification but worth revisiting before any real deployment (a host-only DB doesn't survive the VM being rebuilt).
 - **Backups:** `db-backup` container runs a daily `mysqldump`, gzipped, 7-day retention, into a named Docker volume.
 
 > **Deferred:** Multi-container DB orchestration, read replicas, moving off a host-local database.
@@ -276,7 +278,7 @@ reviews, discount_codes, promotions, cancellation_policies (as data, not config)
 ## 10. Open Questions (updated)
 
 - Should ID/document verification be reintroduced, and if so, what's the actual driver (compliance vs. fraud vs. something else)? It shouldn't come back by default just because v1 had it.
-- Is a local/offline checkout-testing path (mock or Stripe test-mode fixtures) worth building now, given the README already documents one that doesn't exist in code?
+- Is a local/offline checkout-testing path (a real in-app mock, distinct from just using Stripe test-mode keys) worth building, so contributors without a Stripe account can still exercise the payment flow end-to-end?
 - When does the database get containerized / moved off the host, and does `COOKIE_SECURE`/HTTPS get addressed before or alongside that?
 - Which payment gateway/region compliance question from v1 — still open.
 
