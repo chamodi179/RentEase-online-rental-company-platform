@@ -1,5 +1,7 @@
 # RentEase — System Architecture (Customer Site + Admin Dashboard, Separated)
 
+> **Last updated 2026-08-02** — covers the as-built system through the realtime (WebSocket/Redis pub-sub) layer, Celery beat scheduled tasks, and the two-tier cancellation/refund policy (§§7a, 7b).
+
 ## 0. Architecture classification (used architecture)
 
 **This is a modular monolith backend, deployed as two isolated runtime instances, behind two separate frontend apps. It is not microservices.**
@@ -214,6 +216,44 @@ app/
 - **Background jobs**: booking confirmation emails, receipt generation — enqueued to Celery from the API, processed by a worker container. Neither frontend talks to Celery directly.
 - **Stripe**: customer app creates a Checkout Session via the API; Stripe webhook hits the API directly (`/public/payments/webhook`), which updates `payments`/`bookings` — never trust the frontend to confirm payment success.
 - **Manual payments/refunds**: recording a manual (cash/bank-transfer) payment or refund (`POST /admin/payments`) is restricted to `super_admin` only — regular `staff` can view the payments ledger (`GET /admin/payments`) but cannot create entries in it, since a manual entry bypasses Stripe and is trusted at face value. Enforced both in the API (`require_role(["super_admin"])`) and in the admin frontend (the "Record manual payment" form only renders for a signed-in `super_admin`).
+- **Cancellation/refund policy is two-tier**: a customer cancelling within the cooling-off window gets an automatic refund via `cancel_booking()`; a staff/`super_admin` cancellation outside that window follows the separate staff cancel policy and may require a manual refund entry. Both paths write to `booking_status_history` and the shared `audit_logs` table, and both publish a booking event (Section 7a) so the admin dashboard reflects the change without a reload.
+
+---
+
+## 7a. Realtime updates: Redis pub/sub + WebSocket (added post-MVP)
+
+The admin dashboard originally required a manual page reload to see another admin's — or a customer's, or a webhook's — change land. That's now live-refreshed:
+
+```
+booking created/cancelled/confirmed/etc.
+        │  (booking_service.py, after DB commit)
+        ▼
+publish_booking_event()  ──▶  Redis PUBLISH  "admin:bookings"
+                                      │
+                                      ▼
+                        GET /admin/ws/bookings  (WebSocket, api-admin only)
+                                      │
+                                      ▼
+                     admin-web: useBookingEvents() hook ──▶ re-fetch affected list/detail
+```
+
+- **Publisher** (`app/services/realtime.py`): a thin wrapper around `redis.Redis.publish()` on a single channel (`admin:bookings`). Called from `booking_service.py` right after a booking is created or its status changes. Deliberately **best-effort** — Redis errors are swallowed, never raised — because the booking's DB row is already committed by the time this runs; a Redis hiccup should never fail a request or roll back a real state change over what's purely a UX nicety.
+- **Subscriber** (`app/routers/admin/realtime.py`): a WebSocket endpoint (`/admin/ws/bookings`), mounted only on `api-admin` (never `api-public` — customers have no reason to see this feed, and the route doesn't even exist in that process, same "absence of a route" isolation as Section 4's RBAC layer 1). Auth is done by hand against the same namespaced admin access-token cookie the HTTP routes use, since FastAPI's `Depends()`-based cookie/role dependencies are built for request/response, not the websocket handshake. Each connected client gets its own `redis.asyncio` pub/sub subscription and just relays messages straight through to the browser.
+- **Payload is intentionally thin**: `{event, booking_id, booking_reference, status}` — a "something changed, go re-fetch it" signal, not a full booking object. The admin frontend still re-fetches from the API on receipt, so the WebSocket message never needs to be treated as a source of truth; if a message is ever dropped, the next manual reload (or the next event) shows the correct state regardless.
+- **Consumers**: the admin `useBookingEvents()` hook drives live-refresh on the bookings list, the booking detail page, and the payments ledger (Section 6's `apps/admin` tree).
+
+## 7b. Scheduled tasks: Celery beat
+
+A second Celery process type was added alongside the existing worker — **`beat`**, a scheduler that enqueues tasks on a timer rather than processing them itself:
+
+```yaml
+# docker-compose.yml
+beat:
+  build: ./apps/api
+  command: celery -A app.worker beat --loglevel=info
+```
+
+Currently it drives one job: `expire_stale_pending_bookings`, enqueued every 15 minutes, which cancels any booking still `pending` more than `PENDING_EXPIRY_HOURS` (24h) after creation — freeing the reserved inventory instead of holding it indefinitely on an abandoned checkout. The task itself still runs on the regular `worker` container; `beat` only ever schedules, it never executes application code, so losing/restarting the `beat` container just delays the next enqueue rather than risking a duplicate cancellation.
 
 ---
 
@@ -253,15 +293,23 @@ services:
     build: ./apps/api
     command: celery -A app.worker worker
 
+  beat:
+    build: ./apps/api          # same image as worker — scheduler only, see §7b
+    command: celery -A app.worker beat --loglevel=info
+
   mysql:
     image: mysql:8.0
   redis:
-    image: redis:7
+    image: redis:7             # now also the pub/sub broker for §7a's live-refresh, not just the Celery broker
   minio:
     image: minio/minio
 ```
 
-> **Note:** this snippet is illustrative of a production VM deploy where the database also runs in Docker. In the actual implementation (`docker-compose.yml` in the delivered project), the database runs on the host machine rather than in a container — so there's no `mysql:` service defined there at all; `api-public` and `api-admin` reach it via `host.docker.internal`. See the project's `README.md` for the real setup.
+> **Note:** the snippet above is illustrative of a general production VM deploy. Two real, separate compose files now exist in the delivered project:
+> - `docker-compose.yml` — local/dev. The database runs on the host machine rather than in a container, so there's no `mysql:` service defined there at all; `api-public` and `api-admin` reach it via `host.docker.internal`. This is also where the `beat` service (§7b) actually lives.
+> - `docker-compose.prod.yml` — production, pulling pre-built images from GHCR (see `docs/CI_CD.md` for the pipeline that builds and pushes them) rather than building from source on the VM.
+>
+> See the project's `README.md` for the real setup and which file to use when.
 
 Reverse proxy (Caddy/Nginx) routes by subdomain:
 - `app.rentease.com` → `customer-web:3000` → `api-public:8000`
