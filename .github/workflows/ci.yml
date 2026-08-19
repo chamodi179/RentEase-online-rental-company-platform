@@ -49,6 +49,9 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y mysql-client
           for f in docs/01_schema.sql docs/02_triggers.sql docs/03_procedures.sql docs/05_seed_data.sql; do
+            echo "Loading $f"
+            mysql -h 127.0.0.1 -P 3306 -u root -proot rentease < "$f"
+          done
 
       - name: Lint (ruff)
         working-directory: apps/api
