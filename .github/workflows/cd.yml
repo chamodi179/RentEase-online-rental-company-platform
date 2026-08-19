@@ -115,7 +115,7 @@ jobs:
           strip_components: 0
 
       - name: Pull images, restart stack, health-check
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -155,7 +155,7 @@ jobs:
       name: production
     steps:
       - name: Redeploy last-known-good tag
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
