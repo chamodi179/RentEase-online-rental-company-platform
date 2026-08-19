@@ -105,7 +105,7 @@ jobs:
           ref: ${{ needs.gate.outputs.sha }}
 
       - name: Copy docker-compose.prod.yml to production host
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
