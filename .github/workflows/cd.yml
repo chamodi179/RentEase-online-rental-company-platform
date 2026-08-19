@@ -29,11 +29,15 @@ jobs:
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
     steps:
-      - name: Resolve commit SHA
+            - name: Resolve commit SHA
         id: resolve
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.sha }}" ]; then
-            echo "sha=${{ inputs.sha }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.sha }}" ]; then
+              echo "sha=${{ inputs.sha }}" >> "$GITHUB_OUTPUT"
+            else
+              echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
           fi
