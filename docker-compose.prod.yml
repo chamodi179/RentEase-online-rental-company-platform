@@ -79,7 +79,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       APP_MODE: public
-      DB_HOST: host.docker.internal
+      DB_HOST: ${DB_HOST}
       DB_PORT: "3306"
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD}
@@ -109,7 +109,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       APP_MODE: admin
-      DB_HOST: host.docker.internal
+      DB_HOST: ${DB_HOST}
       DB_PORT: "3306"
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD}
@@ -140,7 +140,7 @@ services:
       - redis
       - mailer
     environment:
-      DB_HOST: host.docker.internal
+      DB_HOST: ${DB_HOST}
       DB_PORT: "3306"
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD}
@@ -158,7 +158,7 @@ services:
     depends_on:
       - redis
     environment:
-      DB_HOST: host.docker.internal
+      DB_HOST: ${DB_HOST}
       DB_PORT: "3306"
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD}
